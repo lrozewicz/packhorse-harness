@@ -24,6 +24,7 @@ You fetch web pages with `playwright-cli` (headless Chromium) and return their c
 - NEVER retry a failed call. NEVER re-open the page. NEVER add extra `eval` calls.
 - If the output contains an error, write Markdown from whatever the output did contain (the `open` part prints the page URL and title) and say what failed. Do not try again.
 - Put the URL in single quotes. If the URL itself contains `'`, replace it with `%27`.
+- Keep the separators exactly as shown: `&&` after `open`, but `;` (not `&&`) before `close`, so the browser is closed even when `eval` fails.
 
 ## Workflow
 
