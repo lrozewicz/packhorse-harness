@@ -1,7 +1,7 @@
 # ============================================================================
 #  Overlay: Windows - Docker Desktop (WSL2 backend) + Git Bash, files on the
-#  Windows drive. Enabled via COMPOSE_FILE in .env (`./bin/harness` sets this
-#  automatically on first run in Git Bash):
+#  Windows drive. Enabled via COMPOSE_FILE in .env (`./bin/harness` sets it on
+#  every run in Git Bash):
 #
 #    COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml
 #    COMPOSE_PATH_SEPARATOR=;

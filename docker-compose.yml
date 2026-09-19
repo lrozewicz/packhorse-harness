@@ -153,9 +153,8 @@ services:
       - apparmor=unconfined
       - seccomp=unconfined
       - label=disable
-    # GPU (CPU/RAM are read from /proc, VRAM via nvidia-smi).
-    # Without NVIDIA / nvidia-container-toolkit: comment out the `gpus` line.
-    gpus: all
+    # GPU access lives in docker-compose.gpu.yml - ./bin/harness adds that overlay
+    # only when a GPU actually works in containers (HARNESS_GPU=auto|on|off).
     devices: []
     device_cgroup_rules:
       - "a *:* rwm"             # access to all block and character devices

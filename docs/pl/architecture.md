@@ -37,6 +37,7 @@ Router decyduje dla każdego requestu na podstawie pola `model` (id, `aliases`, 
 | `docker-compose.yml` | cztery usługi |
 | `docker-compose.linux.yml` | nakładka Linux: `/` hosta, `/dev`, `/sys`, `/run/udev`, `/etc/localtime`, `~/.claude` hosta (tylko odczyt) |
 | `docker-compose.windows.yml` | nakładka Windows: Docker Desktop + Git Bash, dysk Windows pod `/host` |
+| `docker-compose.gpu.yml` | nakładka GPU (`gpus: all`), dodawana przez `./bin/harness` tylko wtedy, gdy GPU działa w kontenerach |
 | `.env.example` | szablon `.env` (UID/GID, katalog roboczy, flagi, klucze dostawców) |
 | `.gitattributes` | wymusza LF w skryptach (CRLF psuje entrypoint) |
 | `bin/harness` | interfejs wiersza poleceń (`up`, `claude`, `shell`, `regen`, `test`, …) |

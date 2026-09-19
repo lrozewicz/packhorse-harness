@@ -8,7 +8,7 @@
 - Bash — na Windows Git Bash (zob. [Windows](windows.md)).
 - Klucz API co najmniej jednego dostawcy zgodnego z OpenAI (domyślny przykład to GLM 5.3 Flash z [z.ai](https://z.ai) przez `ZAI_API_KEY`).
 - Opcjonalnie: subskrypcja Claude. Bez niej użyj trybu routera `standalone` (zob. [Modele](models.md#tryby-routera)).
-- Opcjonalnie: karta NVIDIA z `nvidia-container-toolkit` (w przeciwnym razie zakomentuj `gpus: all` w `docker-compose.yml`).
+- Opcjonalnie: karta NVIDIA z `nvidia-container-toolkit` — wykrywana automatycznie, nic nie trzeba konfigurować.
 
 ## Instalacja
 
@@ -22,13 +22,24 @@ Uzupełnij `.env`:
 
 | zmienna | co ustawić |
 | --- | --- |
-| `HOST_UID`, `HOST_GID` | Twoje `id -u` / `id -g` — pliki zapisywane w kontenerze mają właściwego właściciela |
-| `DOCKER_GID` | `getent group docker \| cut -d: -f3` |
 | `WORKSPACE_DIR` | katalog montowany jako `/workspace` (domyślnie `..`, czyli katalog nad tym repo) |
 | `LITELLM_MASTER_KEY` | dowolny losowy ciąg; nie opuszcza sieci Compose |
 | klucze dostawców | np. `ZAI_API_KEY=...` — nazwy pochodzą z `api_key_env` w `models.yaml` |
 
-Gdy `.env` nie istnieje, `./bin/harness` tworzy go z `.env.example`, wpisuje UID/GID, grupę Dockera i losowy klucz LiteLLM oraz dobiera nakładkę platformową (Linux albo Windows).
+Gdy `.env` nie istnieje, `./bin/harness` tworzy go z `.env.example` z losowym kluczem LiteLLM.
+
+### Wykrywanie platformy i GPU
+
+Wszystko, co zależy od maszyny, jest wykrywane przy **każdym** uruchomieniu, więc `.env` skopiowany z innego komputera sam się naprawia:
+
+| co | jak | wynik w `.env` |
+| --- | --- | --- |
+| platforma | Git Bash na Windows → `windows`, w pozostałych przypadkach `linux` | `COMPOSE_FILE` z `docker-compose.windows.yml` albo `docker-compose.linux.yml` i pasujący `COMPOSE_PATH_SEPARATOR` |
+| karta NVIDIA | sterownik NVIDIA na hoście, potem jednorazowe `docker run --gpus all` na lokalnym obrazie (wynik zapamiętany dla danego silnika Dockera w `generated/.gpu-probe`) | `docker-compose.gpu.yml` dodany do `COMPOSE_FILE` tylko wtedy, gdy GPU naprawdę działa w kontenerach |
+| tożsamość (Linux) | `id -u`, `id -g`, `getent group docker` | `HOST_UID`, `HOST_GID`, `DOCKER_GID` (zmiana przebudowuje obraz Claude Code) |
+| ścieżki (Windows) | forma Git Basha `/c/...` | zamiana na `C:/...` w `WORKSPACE_DIR`, `HOST_DRIVE`, `HOST_CLAUDE_DIR` |
+
+Każda zmiana jest wypisywana (`updated .env: …`). Nadpisania w `.env`: `HARNESS_PLATFORM=linux|windows`, `HARNESS_GPU=on|off` albo `HARNESS_AUTODETECT=0`, żeby plik zostawić w spokoju. `./bin/harness doctor` pokazuje, co wykryto i dlaczego (zawsze ponawia próbę GPU).
 
 ## Pierwsza sesja
 
@@ -74,6 +85,7 @@ W sesji wykonaj `/login` (subskrypcja), potem `/model` — Twoje modele zewnętr
 | `./bin/harness models` | lista aktywnych modeli zewnętrznych |
 | `./bin/harness status` / `logs [usługa]` | stan usług, `/healthz` routera, log requestów |
 | `./bin/harness up` / `down` / `restart` / `build` | cykl życia usług |
+| `./bin/harness doctor` | wykryta platforma, silnik Dockera, GPU, nakładki i wartości `.env` |
 | `./bin/harness clean` | `down` + usunięcie wolumenu z logowaniem (uwaga!) |
 
 Wszystko to cienka warstwa na `docker compose`, a `COMPOSE_FILE` w `.env` wybiera nakładkę platformową, więc gołe `docker compose ...` też działa.

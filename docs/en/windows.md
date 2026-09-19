@@ -5,18 +5,16 @@
 > [!NOTE]
 > Run on Windows 11 + Docker Desktop 29.3 (WSL2 backend, Compose v5.1) + Git Bash. Remaining gaps are listed in [Verification](verification.md#not-verified-yet); reports and fixes are welcome.
 
-Supported setup: **Docker Desktop with the WSL2 backend, the harness run from Git Bash, files on a Windows drive.** Installation is the same; `.env` just selects the second overlay (`./bin/harness` does that itself when it creates `.env`):
+Supported setup: **Docker Desktop with the WSL2 backend, the harness run from Git Bash, files on a Windows drive.** Installation is the same. `./bin/harness` detects Git Bash and switches `.env` to the Windows overlay by itself (`COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml`, `COMPOSE_PATH_SEPARATOR=;`) — also in a `.env` copied from a Linux machine. What you may want to set:
 
 ```bash
-COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml
-COMPOSE_PATH_SEPARATOR=;
 WORKSPACE_DIR=C:/work/repositories     # FORWARD slashes
 # HOST_DRIVE=C:/                       # what appears under /host (default: the whole C: drive)
 # HOST_CLAUDE_DIR=C:/Users/<user>/.claude
 # TZ=Europe/Warsaw                     # no /etc/localtime bind on Windows
 ```
 
-`WORKSPACE_DIR` format: `C:/work/repositories`. **Not** `/c/work/...` (Git Bash form, Compose does not understand it) and **not** `C:\work\...` (backslashes break interpolation). A relative `..` works too — it is resolved from the compose file's directory. Avoid spaces in the path.
+`WORKSPACE_DIR` format: `C:/work/repositories`. The Git Bash form `/c/work/...` is converted automatically; **not** `C:\work\...` (backslashes break interpolation). A relative `..` works too — it is resolved from the compose file's directory. Avoid spaces in the path.
 
 **What works the same:** `/workspace` on the Windows drive, the router + LiteLLM + external models, `/model`, subagents, `docker ps` on Docker Desktop containers, GPU through CUDA on WSL (`nvidia-smi` responds, but temperature and power show `N/A`).
 
@@ -31,9 +29,9 @@ WORKSPACE_DIR=C:/work/repositories     # FORWARD slashes
 | `free`, `lscpu` | WSL2 VM limits (by default ~50% of RAM), not host values |
 | `/etc/localtime` | not mounted — set the time zone with `TZ` in `.env` |
 
-**No NVIDIA GPU?** Comment out `gpus: all` in `docker-compose.yml`, otherwise the `claude` container fails to start with *"nvidia-container-cli: initialization error: WSL environment detected but no adapters were found"*.
+**GPU:** the GPU overlay is added only when `docker run --gpus all` works, so a machine without an NVIDIA card starts normally (previously it failed with *"nvidia-container-cli: initialization error: WSL environment detected but no adapters were found"*).
 
-**Copied `.env` from a Linux machine?** Switch `COMPOSE_FILE`/`COMPOSE_PATH_SEPARATOR` to the Windows overlay (above). With the Linux overlay on Docker Desktop, `/host` binds the WSL2 VM's root instead of the Windows drive.
+**`.env` copied from a Linux machine** is corrected on the next run (with the Linux overlay on Docker Desktop, `/host` would bind the WSL2 VM's root instead of the Windows drive). `./bin/harness doctor` shows the result.
 
 ## Git Bash pitfalls handled by `./bin/harness`
 

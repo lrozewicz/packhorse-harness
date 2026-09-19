@@ -5,18 +5,16 @@
 > [!NOTE]
 > Uruchomione na Windows 11 + Docker Desktop 29.3 (backend WSL2, Compose v5.1) + Git Bash. Pozostałe luki są w [Weryfikacji](verification.md#jeszcze-niesprawdzone); zgłoszenia i poprawki są mile widziane.
 
-Obsługiwany wariant: **Docker Desktop z backendem WSL2, harness uruchamiany z Git Basha, pliki na dysku Windows.** Instalacja jest taka sama, tylko `.env` wskazuje drugą nakładkę (`./bin/harness` ustawia to sam, gdy tworzy `.env`):
+Obsługiwany wariant: **Docker Desktop z backendem WSL2, harness uruchamiany z Git Basha, pliki na dysku Windows.** Instalacja jest taka sama. `./bin/harness` wykrywa Git Basha i sam przestawia `.env` na nakładkę windowsową (`COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml`, `COMPOSE_PATH_SEPARATOR=;`) — także w `.env` skopiowanym z Linuksa. Co możesz chcieć ustawić:
 
 ```bash
-COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml
-COMPOSE_PATH_SEPARATOR=;
 WORKSPACE_DIR=C:/praca/repozytoria     # ukośniki w PRZÓD
 # HOST_DRIVE=C:/                       # co wyląduje pod /host (domyślnie cały dysk C:)
 # HOST_CLAUDE_DIR=C:/Users/<user>/.claude
 # TZ=Europe/Warsaw                     # na Windows nie ma bindu /etc/localtime
 ```
 
-Format `WORKSPACE_DIR`: `C:/praca/repozytoria`. **Nie** `/c/praca/...` (forma Git Basha, Compose jej nie zrozumie) i **nie** `C:\praca\...` (backslash psuje interpolację). Ścieżka względna `..` też działa — liczona jest od katalogu pliku compose. Unikaj spacji w ścieżce.
+Format `WORKSPACE_DIR`: `C:/praca/repozytoria`. Forma Git Basha `/c/praca/...` jest zamieniana automatycznie; **nie** `C:\praca\...` (backslash psuje interpolację). Ścieżka względna `..` też działa — liczona jest od katalogu pliku compose. Unikaj spacji w ścieżce.
 
 **Co działa tak samo:** `/workspace` na dysku Windows, router + LiteLLM + modele zewnętrzne, `/model`, subagenci, `docker ps` na kontenerach Docker Desktop, GPU przez CUDA on WSL (`nvidia-smi` odpowiada, ale temperatura i pobór mocy pokazują `N/A`).
 
@@ -31,9 +29,9 @@ Format `WORKSPACE_DIR`: `C:/praca/repozytoria`. **Nie** `/c/praca/...` (forma Gi
 | `free`, `lscpu` | limity maszyny WSL2 (domyślnie ok. 50% RAM), nie wartości hosta |
 | `/etc/localtime` | nie montowane — strefę czasową ustaw przez `TZ` w `.env` |
 
-**Brak karty NVIDIA?** Zakomentuj `gpus: all` w `docker-compose.yml`, inaczej kontener `claude` nie wystartuje z błędem *„nvidia-container-cli: initialization error: WSL environment detected but no adapters were found”*.
+**GPU:** nakładka GPU jest dodawana tylko wtedy, gdy działa `docker run --gpus all`, więc komputer bez karty NVIDIA startuje normalnie (wcześniej kończyło się to błędem *„nvidia-container-cli: initialization error: WSL environment detected but no adapters were found”*).
 
-**`.env` skopiowany z Linuksa?** Przestaw `COMPOSE_FILE`/`COMPOSE_PATH_SEPARATOR` na nakładkę windowsową (powyżej). Z nakładką linuksową na Docker Desktop `/host` montuje korzeń maszyny WSL2 zamiast dysku Windows.
+**`.env` skopiowany z Linuksa** zostanie poprawiony przy następnym uruchomieniu (z nakładką linuksową na Docker Desktop `/host` montowałby korzeń maszyny WSL2 zamiast dysku Windows). `./bin/harness doctor` pokazuje wynik.
 
 ## Pułapki Git Basha, które obchodzi `./bin/harness`
 

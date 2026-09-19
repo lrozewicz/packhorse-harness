@@ -8,7 +8,7 @@
 - Bash — on Windows, Git Bash (see [Windows](windows.md)).
 - An API key for at least one OpenAI-compatible provider (the default example uses [z.ai](https://z.ai) GLM 5.3 Flash via `ZAI_API_KEY`).
 - Optional: a Claude subscription. Without one, use the `standalone` router mode (see [Models](models.md#router-modes)).
-- Optional: an NVIDIA GPU with `nvidia-container-toolkit` (otherwise comment out `gpus: all` in `docker-compose.yml`).
+- Optional: an NVIDIA GPU with `nvidia-container-toolkit` — detected automatically, nothing to configure.
 
 ## Installation
 
@@ -22,13 +22,24 @@ Edit `.env`:
 
 | variable | what to set |
 | --- | --- |
-| `HOST_UID`, `HOST_GID` | your `id -u` / `id -g` — files written in the container get the right owner |
-| `DOCKER_GID` | `getent group docker \| cut -d: -f3` |
 | `WORKSPACE_DIR` | the directory mounted as `/workspace` (default `..`, the parent of this repo) |
 | `LITELLM_MASTER_KEY` | any random string; it never leaves the Compose network |
 | provider keys | e.g. `ZAI_API_KEY=...` — names come from `api_key_env` in `models.yaml` |
 
-If `.env` does not exist, `./bin/harness` creates it from `.env.example`, fills in the UID/GID, the Docker group and a random LiteLLM key, and picks the platform overlay (Linux or Windows).
+If `.env` does not exist, `./bin/harness` creates it from `.env.example` with a random LiteLLM key.
+
+### Platform and GPU detection
+
+Everything machine-specific is detected on **every** run, so a `.env` copied from another machine fixes itself:
+
+| detected | how | result in `.env` |
+| --- | --- | --- |
+| platform | Git Bash on Windows → `windows`, otherwise `linux` | `COMPOSE_FILE` with `docker-compose.windows.yml` or `docker-compose.linux.yml`, and the matching `COMPOSE_PATH_SEPARATOR` |
+| NVIDIA GPU | NVIDIA driver on the host, then one throw-away `docker run --gpus all` with a local image (cached per Docker engine in `generated/.gpu-probe`) | `docker-compose.gpu.yml` added to `COMPOSE_FILE` only if a GPU really works in containers |
+| identity (Linux) | `id -u`, `id -g`, `getent group docker` | `HOST_UID`, `HOST_GID`, `DOCKER_GID` (a change rebuilds the Claude Code image) |
+| paths (Windows) | Git Bash form `/c/...` | converted to `C:/...` in `WORKSPACE_DIR`, `HOST_DRIVE`, `HOST_CLAUDE_DIR` |
+
+Every change is printed (`updated .env: …`). Overrides in `.env`: `HARNESS_PLATFORM=linux|windows`, `HARNESS_GPU=on|off`, or `HARNESS_AUTODETECT=0` to leave the file alone. `./bin/harness doctor` prints what was detected and why (it always re-runs the GPU probe).
 
 ## First session
 
@@ -74,6 +85,7 @@ Inside the session run `/login` (subscription), then `/model` — your external 
 | `./bin/harness models` | list active external models |
 | `./bin/harness status` / `logs [svc]` | service state, router `/healthz`, request log |
 | `./bin/harness up` / `down` / `restart` / `build` | service lifecycle |
+| `./bin/harness doctor` | detected platform, Docker engine, GPU, overlays and `.env` values |
 | `./bin/harness clean` | `down` + remove the login volume (careful!) |
 
 Everything is a thin wrapper around `docker compose`, and `COMPOSE_FILE` in `.env` selects the platform overlay, so plain `docker compose ...` works as well.

@@ -5,6 +5,7 @@
 ## Diagnostyka
 
 ```bash
+./bin/harness doctor                  # wykryta platforma, silnik Dockera, GPU, nakładki, wartości .env
 ./bin/harness status                  # usługi + /healthz routera (tryb, modele, liczniki requestów)
 ./bin/harness logs router             # linia na request: ścieżka, model, cel, status, czas, auth
 ./bin/harness logs litellm            # błędy tłumaczenia Anthropic -> OpenAI
@@ -31,8 +32,8 @@ HARNESS_LOG_LEVEL=debug ./bin/harness regen   # + pola requestu i wykonane podmi
 | agent pada z *„would be spawned with zero tools”* | agent wymienia narzędzia MCP, których serwera nie ma w sesji — użyj `Bash` + `playwright-cli` albo dodaj serwer do `claude/mcp.json` |
 | `pull access denied for packhorse/router` przy pierwszym uruchomieniu | obrazu routera jeszcze nie było, a `compose run` próbował go pobrać; `./bin/harness` najpierw buduje oba obrazy — jeśli wołasz `docker compose run` bezpośrednio, wykonaj wcześniej `docker compose build` |
 | brak modeli zewnętrznych w `/model` na koncie firmowym, `claude -p --model <id>` wypisuje `[claude-code:unrecognized_model]` | zdalne managed settings organizacji przykrywają drop-in harnessu; entrypoint kopiuje `modelPicker` do ustawień użytkownika — sprawdź: `./bin/harness shell -c 'jq -c .modelPicker ~/.claude/settings.json'` (zob. [Modele](models.md#skąd-modele-w-model)) |
-| `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found` (albo inny błąd GPU przy starcie) | host nie ma karty NVIDIA albo `nvidia-container-toolkit` — zakomentuj `gpus: all` w `docker-compose.yml` |
-| GPU niewidoczne | brak `nvidia-container-toolkit` — zakomentuj `gpus: all` w `docker-compose.yml` |
+| `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found` (albo inny błąd GPU przy starcie) | nakładka GPU jest włączona, choć GPU nie działa w kontenerach — automatycznie dodawana jest tylko po udanej próbie, więc sprawdź `HARNESS_GPU` w `.env` (`on` ją wymusza) albo ustaw `HARNESS_GPU=off` |
+| GPU niewidoczne w kontenerze | `./bin/harness doctor` pokazuje przyczynę: brak sterownika NVIDIA na hoście albo sterownik jest, ale `docker run --gpus all` zawodzi (zainstaluj `nvidia-container-toolkit` i uruchom `doctor` ponownie) |
 | zmiany w `.env` lub `models.yaml` ignorowane | LiteLLM czyta konfigurację tylko przy starcie — użyj `./bin/harness regen`, nie `docker compose restart` |
 
 ## Znane pułapki (już obsłużone)

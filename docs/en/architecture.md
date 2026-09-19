@@ -37,6 +37,7 @@ The router decides per request, based on the `model` field (ids, `aliases`, `mat
 | `docker-compose.yml` | the four services |
 | `docker-compose.linux.yml` | Linux overlay: host `/`, `/dev`, `/sys`, `/run/udev`, `/etc/localtime`, host `~/.claude` (read-only) |
 | `docker-compose.windows.yml` | Windows overlay: Docker Desktop + Git Bash, Windows drive under `/host` |
+| `docker-compose.gpu.yml` | GPU overlay (`gpus: all`), added by `./bin/harness` only when a GPU works in containers |
 | `.env.example` | template for `.env` (UID/GID, workspace, flags, provider keys) |
 | `.gitattributes` | forces LF on scripts (CRLF breaks the entrypoint) |
 | `bin/harness` | the command-line front end (`up`, `claude`, `shell`, `regen`, `test`, …) |

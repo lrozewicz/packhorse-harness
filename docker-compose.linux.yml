@@ -2,7 +2,7 @@
 #  Overlay: Linux (native Docker or Docker CE inside a WSL2 distro).
 #  Gives the `claude` service access to the host filesystem and hardware.
 #
-#  Enabled via COMPOSE_FILE in .env:
+#  Enabled via COMPOSE_FILE in .env (./bin/harness keeps it set on every run):
 #    COMPOSE_FILE=docker-compose.yml:docker-compose.linux.yml
 #    COMPOSE_PATH_SEPARATOR=:
 #

@@ -14,7 +14,7 @@ The service in [`docker-compose.yml`](../../docker-compose.yml) is privileged on
 | `privileged: true` + `cap_add: ALL` + `seccomp/apparmor=unconfined` | all capabilities, unmasked `/dev`, `strace`, `hdparm`, `smartctl` |
 | `pid: host` | `ps` sees host processes and `kill` stops them (PID 1 in the container is the host's `systemd`) |
 | `ipc: host`, `cgroup: host`, `userns_mode: host` | shared memory (X11/CUDA IPC), cgroup statistics, UIDs 1:1 with the host |
-| `gpus: all` + `NVIDIA_DRIVER_CAPABILITIES=all` | `nvidia-smi` in the container: VRAM, utilisation, temperature |
+| `gpus: all` (overlay `docker-compose.gpu.yml`, added automatically when a GPU works) + `NVIDIA_DRIVER_CAPABILITIES=all` | `nvidia-smi` in the container: VRAM, utilisation, temperature |
 | `/:/host` (`rslave`) | the whole host filesystem under `/host` (`df -h /host`, `ncdu /host`) |
 | `/dev`, `/sys`, `/run/udev` | disks (`lsblk`, `nvme`, `smartctl`), sensors (`sensors`), PCI (`lspci`) |
 | `/var/run/docker.sock` | `docker ps`, `docker logs`, restarting host containers (client in the image) |

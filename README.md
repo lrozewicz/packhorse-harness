@@ -39,11 +39,11 @@ Requirements: Docker with Compose v2, Bash (Git Bash on Windows), an API key for
 ```bash
 git clone https://github.com/lrozewicz/packhorse-harness.git
 cd packhorse-harness
-cp .env.example .env         # set DOCKER_GID, WORKSPACE_DIR and provider keys (e.g. ZAI_API_KEY)
+cp .env.example .env         # set WORKSPACE_DIR and provider keys (e.g. ZAI_API_KEY)
 ./bin/harness claude         # starts everything it needs, then the session (run /login, then /model)
 ```
 
-The first run builds the images and starts the config generator, LiteLLM and the router on its own; when the last session ends, it stops them again. Optional: `./bin/harness up` starts the services separately and shows their status (also useful after an update, as it rebuilds the router), and `./bin/harness test` sends one request to an external model to check the provider key. `./bin/harness` without arguments lists all commands. Full walkthrough: [Getting started](docs/en/getting-started.md).
+The first run builds the images and starts the config generator, LiteLLM and the router on its own; when the last session ends, it stops them again. The platform (Linux or Windows), a working NVIDIA GPU and your UID/GID are detected on every run — `./bin/harness doctor` shows what was detected. Optional: `./bin/harness up` starts the services separately and shows their status (also useful after an update, as it rebuilds the router), and `./bin/harness test` sends one request to an external model to check the provider key. `./bin/harness` without arguments lists all commands. Full walkthrough: [Getting started](docs/en/getting-started.md).
 
 ## Documentation
 

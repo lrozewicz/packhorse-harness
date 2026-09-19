@@ -14,7 +14,7 @@ Usługa w [`docker-compose.yml`](../../docker-compose.yml) jest celowo uprzywile
 | `privileged: true` + `cap_add: ALL` + `seccomp/apparmor=unconfined` | wszystkie capabilities, `/dev` bez maskowania, `strace`, `hdparm`, `smartctl` |
 | `pid: host` | `ps` widzi procesy hosta, a `kill` je zatrzymuje (PID 1 w kontenerze to `systemd` hosta) |
 | `ipc: host`, `cgroup: host`, `userns_mode: host` | współdzielona pamięć (X11/CUDA IPC), statystyki cgroup, UID-y 1:1 z hostem |
-| `gpus: all` + `NVIDIA_DRIVER_CAPABILITIES=all` | `nvidia-smi` w kontenerze: VRAM, wykorzystanie, temperatura |
+| `gpus: all` (nakładka `docker-compose.gpu.yml`, dodawana automatycznie, gdy GPU działa) + `NVIDIA_DRIVER_CAPABILITIES=all` | `nvidia-smi` w kontenerze: VRAM, wykorzystanie, temperatura |
 | `/:/host` (`rslave`) | cały system plików hosta pod `/host` (`df -h /host`, `ncdu /host`) |
 | `/dev`, `/sys`, `/run/udev` | dyski (`lsblk`, `nvme`, `smartctl`), czujniki (`sensors`), PCI (`lspci`) |
 | `/var/run/docker.sock` | `docker ps`, `docker logs`, restart kontenerów hosta (klient jest w obrazie) |

@@ -5,6 +5,7 @@
 ## Diagnostics
 
 ```bash
+./bin/harness doctor                  # detected platform, Docker engine, GPU, overlays, .env values
 ./bin/harness status                  # services + router /healthz (mode, models, request counters)
 ./bin/harness logs router             # one line per request: path, model, target, status, time, auth
 ./bin/harness logs litellm            # Anthropic -> OpenAI translation errors
@@ -31,8 +32,8 @@ HARNESS_LOG_LEVEL=debug ./bin/harness regen   # + request fields and applied rew
 | agent fails with *"would be spawned with zero tools"* | the agent lists MCP tools whose server is not in the session — use `Bash` + `playwright-cli`, or add the server to `claude/mcp.json` |
 | `pull access denied for packhorse/router` on the first run | the router image did not exist yet and `compose run` tried to pull it; `./bin/harness` builds both images first — if you call `docker compose run` directly, run `docker compose build` before |
 | external models missing from `/model` on a company account, `claude -p --model <id>` prints `[claude-code:unrecognized_model]` | the organization's remote managed settings outrank the harness drop-in; the entrypoint mirrors `modelPicker` into user settings — check with `./bin/harness shell -c 'jq -c .modelPicker ~/.claude/settings.json'` (see [Models](models.md#how-models-appear-in-model)) |
-| `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found` (or another GPU prestart error) | the host has no NVIDIA GPU or no `nvidia-container-toolkit` — comment out `gpus: all` in `docker-compose.yml` |
-| GPU not visible | no `nvidia-container-toolkit` — comment out `gpus: all` in `docker-compose.yml` |
+| `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found` (or another GPU prestart error) | the GPU overlay is on although no GPU works in containers — it is added automatically only after a successful probe, so check `HARNESS_GPU` in `.env` (`on` forces it) or set `HARNESS_GPU=off` |
+| GPU not visible in the container | `./bin/harness doctor` shows why: no NVIDIA driver on the host, or the driver is there but `docker run --gpus all` fails (install `nvidia-container-toolkit`, then run `doctor` again) |
 | changes to `.env` or `models.yaml` ignored | LiteLLM reads its config only at start — use `./bin/harness regen`, not `docker compose restart` |
 
 ## Known pitfalls (already handled)

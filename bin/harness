@@ -34,28 +34,164 @@ info() { printf '%s%s%s\n' "$c_dim" "$*" "$c_off"; }
 die()  { printf '%s%s%s\n' "$c_red" "$*" "$c_off" >&2; exit 1; }
 ok()   { printf '%s%s%s\n' "$c_green" "$*" "$c_off"; }
 
+# --- .env helpers ---------------------------------------------------------------
+# Value of KEY in .env, without an inline "  # comment" (Compose strips those too).
+env_file_value() {
+  sed -n "s/^$1=//p" .env 2>/dev/null | tail -n 1 | sed 's/[[:space:]][[:space:]]*#.*$//; s/[[:space:]]*$//'
+}
+
+# A setting from the environment, else from .env, else the default.
+env_setting() {
+  local name="$1" default="$2" value
+  value="${!name:-}"
+  [ -n "$value" ] || value="$(env_file_value "$name")"
+  printf '%s' "${value:-$default}"
+}
+
+# KEY=VALUE in .env (appended when missing); `cat >` keeps the file's permissions.
+set_env_value() {
+  local key="$1" value="$2" tmp
+  tmp="$(mktemp)"
+  awk -v k="$key" -v v="$value" '
+    index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }' .env > "$tmp"
+  cat "$tmp" > .env
+  rm -f "$tmp"
+}
+
 ensure_env() {
   [ -f .env ] && return 0
-  say "no .env - creating it from .env.example (platform: ${HARNESS_OS})"
+  say "no .env - creating it from .env.example"
   cp .env.example .env
-
-  if [ "$HARNESS_OS" = "windows" ]; then
-    # Overlay without the /dev, /sys, /run/udev binds - those paths do not exist on Windows.
-    # The file list separator on Windows is ';'.
-    sed -i 's#^COMPOSE_FILE=.*#COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml#' .env
-    sed -i 's#^COMPOSE_PATH_SEPARATOR=.*#COMPOSE_PATH_SEPARATOR=;#' .env
-    # HOST_UID/HOST_GID stay at 1000: `id -u` in Git Bash returns a Windows
-    # identifier (e.g. 197609), and on binds from drive C: POSIX permissions are emulated anyway.
-    info "files on a Windows drive: set WORKSPACE_DIR as C:/path/to/code (not /c/...)"
-  else
-    sed -i "s/^HOST_UID=.*/HOST_UID=$(id -u)/; s/^HOST_GID=.*/HOST_GID=$(id -g)/" .env
-    local gid; gid="$(getent group docker | cut -d: -f3 || true)"
-    [ -n "$gid" ] && sed -i "s/^DOCKER_GID=.*/DOCKER_GID=${gid}/" .env
-  fi
-
-  sed -i "s#^LITELLM_MASTER_KEY=.*#LITELLM_MASTER_KEY=sk-harness-$(head -c 12 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')#" .env
   chmod 600 .env 2>/dev/null || true
-  info "fill in the provider keys in .env, then: ./bin/harness up"
+  set_env_value LITELLM_MASTER_KEY "sk-harness-$(head -c 12 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
+  info "platform settings are detected automatically; fill in the provider keys in .env"
+}
+
+# --- environment detection --------------------------------------------------------
+# Runs before every compose command, so a .env copied from another machine, or a GPU
+# added or removed later, does not leave a broken configuration behind. The results
+# are exported for this run (the environment wins over .env in Compose) and written
+# to .env, so that plain `docker compose ...` behaves the same.
+#   HARNESS_AUTODETECT=0          leave .env exactly as it is
+#   HARNESS_PLATFORM=linux|windows  force the platform overlay (default: auto)
+#   HARNESS_GPU=on|off            force the GPU overlay (default: auto)
+GPU_CACHE="generated/.gpu-probe"
+DOCKER_ENGINE=""        # engine | desktop | unavailable
+PLATFORM=""             # linux | windows
+GPU_STATE=""            # yes | no | unknown
+GPU_REASON=""
+NEEDS_CLAUDE_REBUILD=0
+
+detect_docker_engine() {
+  local os
+  os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)"
+  case "$os" in
+    "")                 DOCKER_ENGINE=unavailable ;;
+    *"Docker Desktop"*) DOCKER_ENGINE=desktop ;;
+    *)                  DOCKER_ENGINE=engine ;;
+  esac
+}
+
+detect_platform() {
+  local forced
+  forced="$(env_setting HARNESS_PLATFORM auto)"
+  case "$forced" in
+    linux | windows) PLATFORM="$forced" ;;
+    *) if [ "$HARNESS_OS" = windows ]; then PLATFORM=windows; else PLATFORM=linux; fi ;;
+  esac
+}
+
+# Starts a throw-away container with --gpus all: without a usable NVIDIA GPU the
+# NVIDIA prestart hook fails right away. Uses an image that is already local, so
+# nothing is pulled; the result is cached per Docker engine.
+probe_gpu() {
+  local image result=no engine_id
+  for image in packhorse/router:local packhorse/claude:local ""; do
+    [ -n "$image" ] && docker image inspect "$image" >/dev/null 2>&1 && break
+  done
+  [ -n "$image" ] || return 0
+  docker run --rm --gpus all --entrypoint true "$image" >/dev/null 2>&1 && result=yes
+  engine_id="$(docker info --format '{{.ID}}' 2>/dev/null || true)"
+  printf '%s %s\n' "$result" "$engine_id" > "$GPU_CACHE" 2>/dev/null || true
+  printf '%s' "$result"
+}
+
+gpu_from_cache() {
+  local line engine_id
+  [ -f "$GPU_CACHE" ] || return 0
+  line="$(head -n 1 "$GPU_CACHE" 2>/dev/null)"
+  engine_id="$(docker info --format '{{.ID}}' 2>/dev/null || true)"
+  [ "${line#* }" = "$engine_id" ] && printf '%s' "${line%% *}"
+  return 0
+}
+
+detect_gpu() {
+  local result
+  case "$(env_setting HARNESS_GPU auto)" in
+    on)  GPU_STATE=yes; GPU_REASON="forced (HARNESS_GPU=on)"; return ;;
+    off) GPU_STATE=no;  GPU_REASON="disabled (HARNESS_GPU=off)"; return ;;
+  esac
+  if ! command -v nvidia-smi >/dev/null 2>&1 && [ ! -e /dev/nvidia0 ]; then
+    GPU_STATE=no; GPU_REASON="no NVIDIA driver on the host (nvidia-smi not found)"; return
+  fi
+  result="$(gpu_from_cache)"
+  [ -n "$result" ] || result="$(probe_gpu)"
+  case "$result" in
+    yes) GPU_STATE=yes;     GPU_REASON="docker run --gpus all works" ;;
+    no)  GPU_STATE=no;      GPU_REASON="NVIDIA driver found, but docker run --gpus all fails (nvidia-container-toolkit missing?)" ;;
+    *)   GPU_STATE=unknown; GPU_REASON="not probed yet - needs a local image (built on the first run)" ;;
+  esac
+}
+
+# Updates KEY in .env when the detected value differs; `rebuild` marks build args
+# of the claude image (a change needs a rebuild).
+sync_env_value() {
+  local key="$1" value="$2" old
+  old="$(env_file_value "$key")"
+  [ "$old" = "$value" ] && grep -q "^${key}=" .env && return 0
+  set_env_value "$key" "$value"
+  info "updated .env: ${key}=${value}${old:+ (was: ${old})}"
+  if [ "${3:-}" = rebuild ] && [ -n "$old" ]; then NEEDS_CLAUDE_REBUILD=1; fi
+}
+
+configure_environment() {
+  [ "$(env_setting HARNESS_AUTODETECT 1)" = 1 ] || return 0
+  detect_docker_engine
+  [ "$DOCKER_ENGINE" = unavailable ] && return 0
+  detect_platform
+  detect_gpu
+
+  local sep files key value gid
+  if [ "$PLATFORM" = windows ]; then sep=';'; else sep=':'; fi
+  files="docker-compose.yml${sep}docker-compose.${PLATFORM}.yml"
+  if [ "$GPU_STATE" = yes ]; then
+    files="${files}${sep}docker-compose.gpu.yml"
+  elif [ "$GPU_STATE" = unknown ] && env_file_value COMPOSE_FILE | grep -q 'docker-compose.gpu.yml'; then
+    files="${files}${sep}docker-compose.gpu.yml"      # not probed yet: keep what .env had
+  fi
+  export COMPOSE_FILE="$files" COMPOSE_PATH_SEPARATOR="$sep"
+
+  [ -f .env ] || return 0
+  sync_env_value COMPOSE_FILE "$files"
+  sync_env_value COMPOSE_PATH_SEPARATOR "$sep"
+
+  if [ "$HARNESS_OS" = windows ]; then
+    # Compose on Windows needs C:/path, not the Git Bash form /c/path.
+    for key in WORKSPACE_DIR HOST_DRIVE HOST_CLAUDE_DIR; do
+      value="$(env_file_value "$key")"
+      if [[ "$value" =~ ^/([a-zA-Z])(/.*)?$ ]]; then
+        sync_env_value "$key" "${BASH_REMATCH[1]^^}:${BASH_REMATCH[2]:-/}"
+      fi
+    done
+  else
+    # UID/GID and the docker group are build args of the claude image.
+    sync_env_value HOST_UID "$(id -u)" rebuild
+    sync_env_value HOST_GID "$(id -g)" rebuild
+    gid="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+    [ -z "$gid" ] || sync_env_value DOCKER_GID "$gid" rebuild
+  fi
 }
 
 usage() {
@@ -85,6 +221,7 @@ Models
   ask <id> <prompt>  one-off question to a model via Claude Code
 
 Other
+  doctor             detected platform, Docker engine, GPU, overlays and .env values
   compose [args...]  raw `docker compose` in this directory
   clean              down + removes the login volume (careful!)
 TXT
@@ -108,13 +245,6 @@ ensure_host_claude_dir() {
 # started explicitly with `up`/`restart` are left running. HARNESS_AUTO_STOP=0 (env or
 # .env) turns this off.
 AUTOSTART_MARKER="generated/.autostarted"
-
-env_setting() {
-  local name="$1" default="$2" value
-  value="${!name:-}"
-  [ -n "$value" ] || value="$(sed -n "s/^${name}=//p" .env 2>/dev/null | tail -n 1)"
-  printf '%s' "${value:-$default}"
-}
 
 services_running() {
   "${DC[@]}" ps --services --filter status=running 2>/dev/null | grep -qx router
@@ -154,10 +284,16 @@ compose_run_claude() {
   local missing=()
   docker image inspect packhorse/router:local >/dev/null 2>&1 || missing+=(router)
   docker image inspect packhorse/claude:local >/dev/null 2>&1 || missing+=(claude)
+  if [ "$NEEDS_CLAUDE_REBUILD" = 1 ] && [[ " ${missing[*]} " != *" claude "* ]]; then
+    info "HOST_UID/HOST_GID/DOCKER_GID changed - rebuilding the Claude Code image"
+    missing+=(claude)
+  fi
   if [ "${#missing[@]}" -gt 0 ]; then
-    say "first run - building the images: ${missing[*]}"
+    say "building the images: ${missing[*]}"
     "${DC[@]}" build "${missing[@]}"
   fi
+  # On the very first run the GPU could not be probed before an image existed.
+  [ "$GPU_STATE" != unknown ] || configure_environment
   # This session is about to start the services itself -> they may be stopped afterwards.
   services_running || touch "$AUTOSTART_MARKER"
   # Closing the terminal (HUP) or Ctrl+C still ends in auto_stop.
@@ -178,7 +314,6 @@ compose_run_claude() {
 }
 
 cmd_up() {
-  ensure_env
   # Explicitly started services are not stopped when a session ends.
   rm -f "$AUTOSTART_MARKER"
   say "starting services (harness-init -> litellm -> router)"
@@ -204,7 +339,6 @@ cmd_models() {
 }
 
 cmd_regen() {
-  ensure_env
   say "regenerating the configuration from models.yaml"
   # --build: changes in router/src (the generator) must take effect without a manual `build`
   "${DC[@]}" run --rm --build --quiet-pull harness-init
@@ -246,6 +380,36 @@ cmd_test() {
   ' "$model"
 }
 
+cmd_doctor() {
+  [ -f .env ] || info "no .env yet - it is created by the first ./bin/harness claude or up"
+  rm -f "$GPU_CACHE"       # always re-probe here
+  configure_environment
+  local row='  %-22s %s\n' images="" svc
+  say "environment"
+  printf "$row" "shell" "$HARNESS_OS ($(uname -s 2>/dev/null))"
+  printf "$row" "docker engine" "$DOCKER_ENGINE ($(docker info --format '{{.OperatingSystem}}, {{.ServerVersion}}' 2>/dev/null || echo 'not reachable'))"
+  printf "$row" "docker compose" "$(docker compose version --short 2>/dev/null || echo '?')"
+  printf "$row" "platform overlay" "${PLATFORM:-?} (HARNESS_PLATFORM=$(env_setting HARNESS_PLATFORM auto))"
+  printf "$row" "gpu" "${GPU_STATE:-?} - ${GPU_REASON:-autodetect off}"
+  printf "$row" "COMPOSE_FILE" "${COMPOSE_FILE:-$(env_file_value COMPOSE_FILE)}"
+  if [ "$HARNESS_OS" != windows ] && [ "$DOCKER_ENGINE" = desktop ]; then
+    info "  note: Docker Desktop from a Linux shell - /host, /dev and /sys point at Docker Desktop's VM, not at this machine"
+  fi
+  say ".env"
+  printf "$row" "HOST_UID/HOST_GID" "$(env_file_value HOST_UID)/$(env_file_value HOST_GID)"
+  printf "$row" "DOCKER_GID" "$(env_file_value DOCKER_GID)"
+  printf "$row" "WORKSPACE_DIR" "$(env_file_value WORKSPACE_DIR)"
+  printf "$row" "auto-detect" "$(env_setting HARNESS_AUTODETECT 1)"
+  printf "$row" "auto-stop" "$(env_setting HARNESS_AUTO_STOP 1)"
+  printf "$row" "inherit host config" "$(env_setting HARNESS_INHERIT_HOST_CONFIG 1)"
+  say "state"
+  for svc in router claude; do
+    docker image inspect "packhorse/${svc}:local" >/dev/null 2>&1 && images="${images}${svc} "
+  done
+  printf "$row" "images" "${images:-none (built on the first run)}"
+  printf "$row" "running services" "$("${DC[@]}" ps --services --filter status=running 2>/dev/null | tr '\n' ' ')"
+}
+
 cmd_ask() {
   local model="${1:?specify a model id}"; shift
   [ "$#" -gt 0 ] || die "specify a question"
@@ -254,15 +418,22 @@ cmd_ask() {
 
 main() {
   local cmd="${1:-help}"; shift || true
+  # .env first (commands that start containers create it), then one detection pass.
+  case "$cmd" in claude | shell | hostinfo | login | up | build | regen) ensure_env ;; esac
   case "$cmd" in
-    claude)   ensure_env; compose_run_claude "$@" ;;
-    shell)    ensure_env; compose_run_claude bash "$@" ;;
-    hostinfo) ensure_env; compose_run_claude exec hostinfo ;;
-    login)    ensure_env; info "in the session, type /login and finish logging in in the browser"; compose_run_claude ;;
+    help | -h | --help | doctor) ;;
+    *) [ ! -f .env ] || configure_environment ;;
+  esac
+  case "$cmd" in
+    claude)   compose_run_claude "$@" ;;
+    shell)    compose_run_claude bash "$@" ;;
+    hostinfo) compose_run_claude exec hostinfo ;;
+    login)    info "in the session, type /login and finish logging in in the browser"; compose_run_claude ;;
+    doctor)   cmd_doctor ;;
     up)       cmd_up ;;
     down)     rm -f "$AUTOSTART_MARKER"; "${DC[@]}" down "$@" ;;
     restart)  rm -f "$AUTOSTART_MARKER"; "${DC[@]}" up -d --force-recreate --wait litellm router ;;
-    build)    ensure_env; "${DC[@]}" build "${@:-}" ;;
+    build)    "${DC[@]}" build "${@:-}" ;;
     status)   cmd_status ;;
     logs)     "${DC[@]}" logs -f --tail 100 "${@:-router}" ;;
     regen)    cmd_regen ;;

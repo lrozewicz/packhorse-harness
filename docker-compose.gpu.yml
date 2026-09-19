@@ -1,0 +1,15 @@
+# ============================================================================
+#  Overlay: NVIDIA GPU for the `claude` service (nvidia-smi, CUDA, VRAM stats).
+#
+#  ./bin/harness adds it to COMPOSE_FILE automatically when `docker run --gpus all`
+#  works on this Docker engine (HARNESS_GPU=auto, the default). Force it with
+#  HARNESS_GPU=on or drop it with HARNESS_GPU=off in .env.
+#
+#  Kept separate because a Compose overlay can add a `gpus` key but never remove
+#  one: with `gpus: all` in the base file, machines without an NVIDIA GPU (or
+#  without nvidia-container-toolkit) could not start the container at all.
+# ============================================================================
+
+services:
+  claude:
+    gpus: all
