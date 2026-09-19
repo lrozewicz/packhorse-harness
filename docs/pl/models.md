@@ -77,6 +77,8 @@ Claude Code czyta `modelPicker` **wyłącznie** z managed settings, `--settings`
 
 Nic nie dotyka `~/.claude/settings.json` w wolumenie, gdzie jest logowanie i Twoje ustawienia; drop-in jest po prostu odtwarzany z `generated/managed-settings.json` przy każdym starcie.
 
+**Konta z polityką organizacji.** `modelPicker` jest brany wyłącznie z *najwyższego* źródła ustawień, które go definiuje, bez scalania. Na subskrypcji firmowej/Team zdalne managed settings organizacji (`claude doctor` pokazuje *„Organization policy: Loaded from api.anthropic.com”*) stoją wyżej niż lokalny drop-in, więc jego pozycje są po cichu pomijane i `/model` pokazuje tylko wbudowane modele — nawet jeśli organizacja w ogóle nie ogranicza modeli. Dlatego entrypoint kopiuje też `modelPicker` do **ustawień użytkownika** w kontenerze (`~/.claude/settings.json` w wolumenie `packhorse-config`; logowanie jest w `.credentials.json`, więc nie jest naruszane). Kopia jest odświeżana przy każdym starcie i usuwana, gdy `models.yaml` nie definiuje modeli. Ograniczenie: jeśli organizacja kiedyś wyśle własny `modelPicker`, przykryje ustawienia użytkownika i pozycje znów znikną; pozostałaby wtedy droga przez `--settings <plik>` przy wywołaniu `claude`.
+
 Przy okazji ustawiany jest `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (najmniejsze okno wśród modeli zewnętrznych). Claude Code czyta tę zmienną **tylko dla modeli spoza `claude-*`**, więc Opus i Sonnet zachowują swoje okna. `behaves_as` usuwa ostrzeżenie `[claude-code:unrecognized_model]` i daje sensowne domyślne możliwości dla nieznanego ID.
 
 ## Świadomość modeli w sesji

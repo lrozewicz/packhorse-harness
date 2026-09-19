@@ -29,12 +29,16 @@ End-to-end checks run in September 2026 on Pop!\_OS 24.04 with Docker 29.8.0, Co
 | config layers, flag `0` | only the image layer + `synced`, no `05-host-settings.json`; switching back to `1` restores the links |
 | own file in the volume | a real `~/.claude/skills/<name>/` is neither overwritten nor removed during cleanup |
 | auto-stop of services | services started by a session are stopped after it ends (also on SIGHUP / closed terminal); with two sessions open, the first to end leaves them up and the last stops them; services started with `up` and `HARNESS_AUTO_STOP=0` keep running |
+| first run without images (`packhorse/router:local` removed) | `./bin/harness shell` → *"first run - building the images: router"*, image built, no `pull access denied`, session started |
+| `modelPicker` mirrored into user settings | kept existing keys (`model`, `theme`), idempotent on restart, removed when `models.yaml` has no models, created from scratch on an empty volume, owner `claude`; `claude -p --model glm-5.3-flash "Say OK"` → `OK` without `[claude-code:unrecognized_model]` |
+| Windows 11 + Docker Desktop 29.3 + Git Bash | runs after three fixes found there: building the router image on the first run, `modelPicker` on an account with an organization policy (both in the repo), and `gpus: all` on a machine without NVIDIA (documented) |
 | Python / pip | `Python 3.11.2`, `pip 23.0.1`, `uv`, `pipx`; `pip install requests` without a venv works |
 | `./bin/harness regen` after a mode change | generator + service recreation, the router reports the new mode in `/healthz` |
 
 ## Not verified yet
 
-- The Windows path (`docker-compose.windows.yml`, Git Bash workarounds, `.gitattributes`) — designed from Docker Desktop's architecture; only the overlay syntax, `HOST_DRIVE` substitution and `COMPOSE_FILE` parsing with `;` were checked.
+- Windows: sensors, disks and `pid: host` behaviour on Docker Desktop (the "host" is the WSL2 VM), and a Windows machine with an NVIDIA GPU.
+- An organization that ships its own `modelPicker` (it would outrank the user-settings mirror).
 - Anthropic server-side tools (`WebSearch`) while an external model is selected.
 - Auto mode in the TUI on an external model.
 - A provider that exposes only the Responses API.

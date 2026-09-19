@@ -148,9 +148,15 @@ auto_stop() {
 
 compose_run_claude() {
   ensure_host_claude_dir
-  if ! docker image inspect packhorse/claude:local >/dev/null 2>&1; then
-    say "first run - building the Claude Code image"
-    "${DC[@]}" build claude
+  # Both images must exist before `compose run`: for the services it starts via
+  # depends_on (harness-init, router) compose pulls a missing image instead of
+  # building it - and packhorse/* is not published anywhere.
+  local missing=()
+  docker image inspect packhorse/router:local >/dev/null 2>&1 || missing+=(router)
+  docker image inspect packhorse/claude:local >/dev/null 2>&1 || missing+=(claude)
+  if [ "${#missing[@]}" -gt 0 ]; then
+    say "first run - building the images: ${missing[*]}"
+    "${DC[@]}" build "${missing[@]}"
   fi
   # This session is about to start the services itself -> they may be stopped afterwards.
   services_running || touch "$AUTOSTART_MARKER"

@@ -29,6 +29,9 @@ HARNESS_LOG_LEVEL=debug ./bin/harness regen   # + pola requestu i wykonane podmi
 | `[claude-code:unrecognized_model]` | brak lub zły `behaves_as` |
 | `Chromium distribution 'chrome' is not found` | `playwright-cli` bez `browserName: chromium` (zob. [Narzędzia w kontenerze](container-tooling.md)) |
 | agent pada z *„would be spawned with zero tools”* | agent wymienia narzędzia MCP, których serwera nie ma w sesji — użyj `Bash` + `playwright-cli` albo dodaj serwer do `claude/mcp.json` |
+| `pull access denied for packhorse/router` przy pierwszym uruchomieniu | obrazu routera jeszcze nie było, a `compose run` próbował go pobrać; `./bin/harness` najpierw buduje oba obrazy — jeśli wołasz `docker compose run` bezpośrednio, wykonaj wcześniej `docker compose build` |
+| brak modeli zewnętrznych w `/model` na koncie firmowym, `claude -p --model <id>` wypisuje `[claude-code:unrecognized_model]` | zdalne managed settings organizacji przykrywają drop-in harnessu; entrypoint kopiuje `modelPicker` do ustawień użytkownika — sprawdź: `./bin/harness shell -c 'jq -c .modelPicker ~/.claude/settings.json'` (zob. [Modele](models.md#skąd-modele-w-model)) |
+| `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found` (albo inny błąd GPU przy starcie) | host nie ma karty NVIDIA albo `nvidia-container-toolkit` — zakomentuj `gpus: all` w `docker-compose.yml` |
 | GPU niewidoczne | brak `nvidia-container-toolkit` — zakomentuj `gpus: all` w `docker-compose.yml` |
 | zmiany w `.env` lub `models.yaml` ignorowane | LiteLLM czyta konfigurację tylko przy starcie — użyj `./bin/harness regen`, nie `docker compose restart` |
 

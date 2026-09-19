@@ -3,7 +3,7 @@
 **English** · [Polski](../pl/windows.md) · [← README](../../README.md)
 
 > [!NOTE]
-> The Windows path was designed from Docker Desktop's architecture and checked only for syntax (overlay, `HOST_DRIVE` substitution, `COMPOSE_FILE` with `;`). It has not been run end-to-end on Windows yet — reports and fixes are welcome.
+> Run on Windows 11 + Docker Desktop 29.3 (WSL2 backend, Compose v5.1) + Git Bash. Remaining gaps are listed in [Verification](verification.md#not-verified-yet); reports and fixes are welcome.
 
 Supported setup: **Docker Desktop with the WSL2 backend, the harness run from Git Bash, files on a Windows drive.** Installation is the same; `.env` just selects the second overlay (`./bin/harness` does that itself when it creates `.env`):
 
@@ -30,6 +30,10 @@ WORKSPACE_DIR=C:/work/repositories     # FORWARD slashes
 | `sensors`, `smartctl`, `nvme`, `lsblk` | no access to physical hardware |
 | `free`, `lscpu` | WSL2 VM limits (by default ~50% of RAM), not host values |
 | `/etc/localtime` | not mounted — set the time zone with `TZ` in `.env` |
+
+**No NVIDIA GPU?** Comment out `gpus: all` in `docker-compose.yml`, otherwise the `claude` container fails to start with *"nvidia-container-cli: initialization error: WSL environment detected but no adapters were found"*.
+
+**Copied `.env` from a Linux machine?** Switch `COMPOSE_FILE`/`COMPOSE_PATH_SEPARATOR` to the Windows overlay (above). With the Linux overlay on Docker Desktop, `/host` binds the WSL2 VM's root instead of the Windows drive.
 
 ## Git Bash pitfalls handled by `./bin/harness`
 

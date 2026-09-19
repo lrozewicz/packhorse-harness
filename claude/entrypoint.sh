@@ -27,7 +27,8 @@ log() { printf 'harness: %s\n' "$*" >&2; }
 
 # --- 1. managed settings ----------------------------------------------------
 # Claude Code reads modelPicker only from managed / --settings / user settings.
-# Writing to managed leaves ~/.claude/settings.json (which holds the login) untouched.
+# On an account with an organization policy the managed drop-in is not enough -
+# see sync_user_model_picker below.
 install_managed_settings() {
   mkdir -p "$MANAGED_DIR"
   if [ -r "${GENERATED}/managed-settings.json" ]; then
@@ -188,7 +189,29 @@ link_config_layers() {
   return 0
 }
 
-# --- 5. user environment ---------------------------------------------------
+# --- 5. modelPicker in the user settings ------------------------------------
+# modelPicker is one of the keys Claude Code honors only from the highest settings
+# source present. On an account with an organization policy (a company subscription)
+# that source is the org's remote managed settings - our drop-in in /etc/claude-code
+# is a lower managed tier and its modelPicker is dropped, so /model shows only the
+# built-in lineup. User settings are read as a separate source, so the rows are
+# mirrored there too. The login sits in .credentials.json, not in settings.json.
+sync_user_model_picker() {
+  local settings="${HOME}/.claude/settings.json" picker tmp
+  command -v jq >/dev/null 2>&1 || return 0
+  [ -r "${GENERATED}/managed-settings.json" ] || return 0
+  picker="$(jq -c '.modelPicker // empty' "${GENERATED}/managed-settings.json" 2>/dev/null)" || return 0
+  [ -f "$settings" ] || printf '{}\n' > "$settings" 2>/dev/null || return 0
+  tmp="${settings}.harness.tmp"
+  if [ -n "$picker" ]; then
+    jq --argjson p "$picker" '.modelPicker = $p' "$settings" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  else
+    jq 'del(.modelPicker)' "$settings" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  fi
+  mv "$tmp" "$settings" 2>/dev/null || rm -f "$tmp"
+}
+
+# --- 6. user environment ---------------------------------------------------
 prepare_home() {
   local home
   home="$(getent passwd "$USER_NAME" | cut -d: -f6)"
@@ -216,6 +239,7 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 link_config_layers
+sync_user_model_picker
 ensure_mcp_servers
 
 case "${1:-}" in

@@ -29,12 +29,16 @@ Testy end-to-end z września 2026 na Pop!\_OS 24.04 z Dockerem 29.8.0, Compose v
 | warstwy konfiguracji, flaga `0` | tylko warstwa obrazu + `synced`, brak `05-host-settings.json`; powrót do `1` przywraca linki |
 | własny plik w wolumenie | prawdziwy `~/.claude/skills/<nazwa>/` nie jest nadpisany ani usunięty przy sprzątaniu |
 | automatyczne zatrzymywanie usług | usługi uruchomione przez sesję gasną po jej końcu (także po SIGHUP / zamknięciu terminala); przy dwóch sesjach pierwsza zostawia je włączone, a ostatnia zatrzymuje; usługi z `up` i `HARNESS_AUTO_STOP=0` działają dalej |
+| pierwsze uruchomienie bez obrazów (usunięty `packhorse/router:local`) | `./bin/harness shell` → *„first run - building the images: router”*, obraz zbudowany, brak `pull access denied`, sesja wystartowała |
+| kopia `modelPicker` w ustawieniach użytkownika | istniejące klucze (`model`, `theme`) zachowane, drugi start niczego nie zmienia, klucz usuwany przy braku modeli w `models.yaml`, tworzony od zera na pustym wolumenie, właściciel `claude`; `claude -p --model glm-5.3-flash "Say OK"` → `OK` bez `[claude-code:unrecognized_model]` |
+| Windows 11 + Docker Desktop 29.3 + Git Bash | działa po trzech poprawkach znalezionych na tej maszynie: budowanie obrazu routera przy pierwszym uruchomieniu, `modelPicker` na koncie z polityką organizacji (obie w repo) i `gpus: all` na maszynie bez NVIDIA (opisane w dokumentacji) |
 | Python / pip | `Python 3.11.2`, `pip 23.0.1`, `uv`, `pipx`; `pip install requests` bez venva działa |
 | `./bin/harness regen` po zmianie trybu | generator + odtworzenie usług, router raportuje nowy tryb w `/healthz` |
 
 ## Jeszcze niesprawdzone
 
-- Ścieżka windowsowa (`docker-compose.windows.yml`, obejścia Git Basha, `.gitattributes`) — zaprojektowana na podstawie architektury Docker Desktop; sprawdzono tylko składnię nakładki, podstawienie `HOST_DRIVE` i parsowanie `COMPOSE_FILE` z `;`.
+- Windows: czujniki, dyski i zachowanie `pid: host` na Docker Desktop („host” to maszyna WSL2) oraz komputer z Windows i kartą NVIDIA.
+- Organizacja, która wysyła własny `modelPicker` (przykryłby kopię w ustawieniach użytkownika).
 - Narzędzia serwerowe Anthropic (`WebSearch`) przy wybranym modelu zewnętrznym.
 - Auto mode w TUI na modelu zewnętrznym.
 - Dostawca udostępniający wyłącznie Responses API.

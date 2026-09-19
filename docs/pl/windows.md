@@ -3,7 +3,7 @@
 [English](../en/windows.md) · **Polski** · [← README](../../README.pl.md)
 
 > [!NOTE]
-> Ścieżka windowsowa powstała na podstawie architektury Docker Desktop i została sprawdzona tylko pod kątem składni (nakładka, podstawienie `HOST_DRIVE`, `COMPOSE_FILE` z `;`). Nie była jeszcze uruchomiona end-to-end na Windows — zgłoszenia i poprawki są mile widziane.
+> Uruchomione na Windows 11 + Docker Desktop 29.3 (backend WSL2, Compose v5.1) + Git Bash. Pozostałe luki są w [Weryfikacji](verification.md#jeszcze-niesprawdzone); zgłoszenia i poprawki są mile widziane.
 
 Obsługiwany wariant: **Docker Desktop z backendem WSL2, harness uruchamiany z Git Basha, pliki na dysku Windows.** Instalacja jest taka sama, tylko `.env` wskazuje drugą nakładkę (`./bin/harness` ustawia to sam, gdy tworzy `.env`):
 
@@ -30,6 +30,10 @@ Format `WORKSPACE_DIR`: `C:/praca/repozytoria`. **Nie** `/c/praca/...` (forma Gi
 | `sensors`, `smartctl`, `nvme`, `lsblk` | brak dostępu do fizycznego sprzętu |
 | `free`, `lscpu` | limity maszyny WSL2 (domyślnie ok. 50% RAM), nie wartości hosta |
 | `/etc/localtime` | nie montowane — strefę czasową ustaw przez `TZ` w `.env` |
+
+**Brak karty NVIDIA?** Zakomentuj `gpus: all` w `docker-compose.yml`, inaczej kontener `claude` nie wystartuje z błędem *„nvidia-container-cli: initialization error: WSL environment detected but no adapters were found”*.
+
+**`.env` skopiowany z Linuksa?** Przestaw `COMPOSE_FILE`/`COMPOSE_PATH_SEPARATOR` na nakładkę windowsową (powyżej). Z nakładką linuksową na Docker Desktop `/host` montuje korzeń maszyny WSL2 zamiast dysku Windows.
 
 ## Pułapki Git Basha, które obchodzi `./bin/harness`
 
