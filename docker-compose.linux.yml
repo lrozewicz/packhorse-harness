@@ -1,0 +1,30 @@
+# ============================================================================
+#  Overlay: Linux (native Docker or Docker CE inside a WSL2 distro).
+#  Gives the `claude` service access to the host filesystem and hardware.
+#
+#  Enabled via COMPOSE_FILE in .env:
+#    COMPOSE_FILE=docker-compose.yml:docker-compose.linux.yml
+#    COMPOSE_PATH_SEPARATOR=:
+#
+#  Compose overlays can only ADD and REPLACE entries (mounts are keyed by
+#  `target`) - they cannot remove anything. That is why platform-specific
+#  binds live here rather than in docker-compose.yml.
+# ============================================================================
+
+services:
+  claude:
+    volumes:
+      # the entire host filesystem
+      - type: bind
+        source: /
+        target: /host
+        bind:
+          propagation: rslave
+      # devices, sysfs and udev - disks (smartctl, nvme), sensors (sensors), PCI
+      - /dev:/dev
+      - /sys:/sys
+      - /run/udev:/run/udev:ro
+      - /etc/localtime:/etc/localtime:ro
+      # the host's Claude Code config (read-only) - whether the container uses it
+      # is controlled by HARNESS_INHERIT_HOST_CONFIG in .env
+      - ${HOST_CLAUDE_DIR:-${HOME}/.claude}:/harness/host-claude:ro

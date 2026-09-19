@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "MCP servers added to every session in the container (scope: user).",
+    "The entrypoint registers them with `claude mcp add-json --scope user`, once per config",
+    "volume - tracked in ~/.claude/.harness-mcp-installed. Removing a server with",
+    "`claude mcp remove` is permanent: the entrypoint does not add it again.",
+    "Deleting an entry from this file unregisters the server on the next container start.",
+    "Why not managed settings: `managedMcpServers` accepts only http/sse servers",
+    "('command is not allowed in managed settings'), and managed-mcp.json takes",
+    "EXCLUSIVE control over MCP, silencing every other server.",
+    "No Playwright here: the browser is handled by `playwright-cli` (see docs)."
+  ],
+  "mcpServers": {}
+}

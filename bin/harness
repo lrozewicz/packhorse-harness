@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  harness - a single command to operate the whole stack.
+#  Everything it does is a thin layer over `docker compose` in the app/ directory.
+# ============================================================================
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$HERE"
+
+DC=(docker compose)
+
+# --- Git Bash / MSYS on Windows ---------------------------------------------
+# 1. MSYS rewrites arguments that look like Unix paths ("/v1/messages"
+#    -> "C:/Program Files/Git/v1/messages") - poison for the docker CLI.
+# 2. MinTTY is not a terminal docker accepts as a TTY ("the input device
+#    is not a TTY") - `winpty`, bundled with Git for Windows, fixes that.
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW* | MSYS* | CYGWIN*) HARNESS_OS=windows ;;
+  Darwin)                   HARNESS_OS=macos ;;
+  *)                        HARNESS_OS=linux ;;
+esac
+
+TTYWRAP=()
+if [ "$HARNESS_OS" = "windows" ]; then
+  export MSYS_NO_PATHCONV=1
+  export MSYS2_ARG_CONV_EXCL='*'
+  if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then TTYWRAP=(winpty); fi
+fi
+
+c_bold=$'\033[1m'; c_dim=$'\033[2m'; c_red=$'\033[31m'; c_green=$'\033[32m'; c_off=$'\033[0m'
+say()  { printf '%s%s%s\n' "$c_bold" "$*" "$c_off"; }
+info() { printf '%s%s%s\n' "$c_dim" "$*" "$c_off"; }
+die()  { printf '%s%s%s\n' "$c_red" "$*" "$c_off" >&2; exit 1; }
+ok()   { printf '%s%s%s\n' "$c_green" "$*" "$c_off"; }
+
+ensure_env() {
+  [ -f .env ] && return 0
+  say "no .env - creating it from .env.example (platform: ${HARNESS_OS})"
+  cp .env.example .env
+
+  if [ "$HARNESS_OS" = "windows" ]; then
+    # Overlay without the /dev, /sys, /run/udev binds - those paths do not exist on Windows.
+    # The file list separator on Windows is ';'.
+    sed -i 's#^COMPOSE_FILE=.*#COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml#' .env
+    sed -i 's#^COMPOSE_PATH_SEPARATOR=.*#COMPOSE_PATH_SEPARATOR=;#' .env
+    # HOST_UID/HOST_GID stay at 1000: `id -u` in Git Bash returns a Windows
+    # identifier (e.g. 197609), and on binds from drive C: POSIX permissions are emulated anyway.
+    info "files on a Windows drive: set WORKSPACE_DIR as C:/path/to/code (not /c/...)"
+  else
+    sed -i "s/^HOST_UID=.*/HOST_UID=$(id -u)/; s/^HOST_GID=.*/HOST_GID=$(id -g)/" .env
+    local gid; gid="$(getent group docker | cut -d: -f3 || true)"
+    [ -n "$gid" ] && sed -i "s/^DOCKER_GID=.*/DOCKER_GID=${gid}/" .env
+  fi
+
+  sed -i "s#^LITELLM_MASTER_KEY=.*#LITELLM_MASTER_KEY=sk-harness-$(head -c 12 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')#" .env
+  chmod 600 .env 2>/dev/null || true
+  info "fill in the provider keys in .env, then: ./bin/harness up"
+}
+
+usage() {
+  cat <<'TXT'
+harness - Claude Code in a container with host access + your own models via LiteLLM
+
+  ./bin/harness <command> [arguments]
+
+Daily work
+  claude [args...]   Claude Code session in the container (no args: TUI)
+  shell              bash shell in the container (host access, sudo, docker)
+  hostinfo           host overview as seen from the container (CPU/RAM/VRAM/disks)
+  login              log in with an Anthropic subscription (/login in the container)
+
+Services
+  up                 builds (if needed) and starts router + LiteLLM
+  down               stops the services
+  restart            restarts the router and LiteLLM
+  build [svc]        rebuilds the images
+  status             service state + router health + model list
+  logs [svc]         follows the logs (default: router)
+
+Models
+  regen              models.yaml -> generated/* (after every models.yaml change)
+  models             lists the active external models
+  test [id]          end-to-end model test via router -> LiteLLM -> provider
+  ask <id> <prompt>  one-off question to a model via Claude Code
+
+Other
+  compose [args...]  raw `docker compose` in this directory
+  clean              down + removes the login volume (careful!)
+TXT
+}
+
+# The host Claude Code config (~/.claude) is always mounted - whether the container
+# uses it is decided by HARNESS_INHERIT_HOST_CONFIG. Docker would create a missing
+# directory as root, and then Claude Code on the host would have nowhere to write.
+ensure_host_claude_dir() {
+  [ "$HARNESS_OS" = "windows" ] && return 0
+  local dir
+  dir="$(sed -n 's/^HOST_CLAUDE_DIR=//p' .env 2>/dev/null | tail -n 1)"
+  dir="${dir:-$HOME/.claude}"
+  [ -d "$dir" ] || mkdir -p "$dir"
+}
+
+# The Claude Code image is built only on first use (`up` starts the services).
+compose_run_claude() {
+  ensure_host_claude_dir
+  if ! docker image inspect packhorse/claude:local >/dev/null 2>&1; then
+    say "first run - building the Claude Code image"
+    "${DC[@]}" build claude
+  fi
+  if [ -t 0 ] && [ -t 1 ]; then
+    # interactive (TUI, /login) - via winpty in Git Bash
+    "${TTYWRAP[@]}" "${DC[@]}" run --rm --quiet-pull claude "$@"
+  else
+    # piped (`echo ... | harness claude -p`, CI) - no TTY allocation
+    "${DC[@]}" run --rm --quiet-pull -T claude "$@"
+  fi
+}
+
+cmd_up() {
+  ensure_env
+  say "starting services (harness-init -> litellm -> router)"
+  "${DC[@]}" up -d --build router
+  cmd_status
+}
+
+cmd_status() {
+  say "services"
+  "${DC[@]}" ps
+  say "router /healthz"
+  if "${DC[@]}" exec -T router node -e "fetch('http://127.0.0.1:8787/healthz').then(r=>r.text()).then(t=>console.log(t))" 2>/dev/null; then :;
+  else info "router is not responding (./bin/harness up)"; fi
+}
+
+cmd_models() {
+  [ -f generated/registry.json ] || die "generated/registry.json is missing - ./bin/harness regen"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '"mode: \(.mode)\n", (.models[] | "\(.id)\n  label    : \(.label)\n  via      : \(.via)\n  api_base : \(.apiBase)\n  key      : \(.apiKeyEnv // "-")\n  ctx/out  : \(.contextTokens)/\(.maxOutputTokens)\n  mimics   : \(.behavesAs)\n")' generated/registry.json
+  else
+    cat generated/registry.json
+  fi
+}
+
+cmd_regen() {
+  ensure_env
+  say "regenerating the configuration from models.yaml"
+  # --build: changes in router/src (the generator) must take effect without a manual `build`
+  "${DC[@]}" run --rm --build --quiet-pull harness-init
+  if "${DC[@]}" ps --services --filter status=running | grep -qx router; then
+    # LiteLLM reads its config only on startup, and .env changes require
+    # recreating the container - hence `up -d --force-recreate`, not `restart`.
+    info "recreating LiteLLM and the router with the new configuration"
+    "${DC[@]}" up -d --force-recreate --wait litellm router >/dev/null
+  fi
+  ok "done"
+}
+
+# End-to-end test: router -> LiteLLM -> provider, over the Anthropic Messages protocol.
+cmd_test() {
+  local model="${1:-}"
+  if [ -z "$model" ]; then
+    model="$(jq -r '.models[0].id' generated/registry.json 2>/dev/null || true)"
+    [ -n "$model" ] && [ "$model" != "null" ] || die "specify a model id: ./bin/harness test <id>"
+  fi
+  say "testing /v1/messages via router: ${model}"
+  "${DC[@]}" exec -T router node -e '
+    const model = process.argv[1];
+    const body = { model, max_tokens: 1024, messages: [{ role: "user", content: "Reply with exactly: HARNESS-OK" }] };
+    fetch("http://127.0.0.1:8787/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": "test", "anthropic-version": "2023-06-01" },
+      body: JSON.stringify(body)
+    }).then(async (r) => {
+      const data = await r.text();
+      console.log("HTTP", r.status);
+      try {
+        const json = JSON.parse(data);
+        const text = (json.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+        console.log(text ? `reply: ${text.trim()}` : data.slice(0, 800));
+        if (json.usage) console.log("usage:", JSON.stringify(json.usage));
+        process.exit(r.ok ? 0 : 1);
+      } catch { console.log(data.slice(0, 800)); process.exit(1); }
+    }).catch((e) => { console.error("error:", e.message); process.exit(1); });
+  ' "$model"
+}
+
+cmd_ask() {
+  local model="${1:?specify a model id}"; shift
+  [ "$#" -gt 0 ] || die "specify a question"
+  compose_run_claude -p --model "$model" "$*"
+}
+
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    claude)   ensure_env; compose_run_claude "$@" ;;
+    shell)    ensure_env; compose_run_claude bash "$@" ;;
+    hostinfo) ensure_env; compose_run_claude exec hostinfo ;;
+    login)    ensure_env; info "in the session, type /login and finish logging in in the browser"; compose_run_claude ;;
+    up)       cmd_up ;;
+    down)     "${DC[@]}" down "$@" ;;
+    restart)  "${DC[@]}" up -d --force-recreate --wait litellm router ;;
+    build)    ensure_env; "${DC[@]}" build "${@:-}" ;;
+    status)   cmd_status ;;
+    logs)     "${DC[@]}" logs -f --tail 100 "${@:-router}" ;;
+    regen)    cmd_regen ;;
+    models)   cmd_models ;;
+    test)     cmd_test "$@" ;;
+    ask)      cmd_ask "$@" ;;
+    compose)  "${DC[@]}" "$@" ;;
+    clean)    "${DC[@]}" down -v ;;
+    help | -h | --help) usage ;;
+    *) usage; die "unknown command: ${cmd}" ;;
+  esac
+}
+
+main "$@"

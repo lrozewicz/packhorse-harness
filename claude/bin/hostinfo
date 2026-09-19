@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Quick overview of the host from inside the container - proof that host access works.
+# CPU / RAM / VRAM / disks / top host processes (pid: host).
+set -uo pipefail
+
+hr() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
+
+hr "host"
+printf 'kernel   : %s\n' "$(uname -srm)"
+[ -r /host/etc/os-release ] && printf 'system   : %s\n' "$(. /host/etc/os-release; echo "$PRETTY_NAME")"
+printf 'uptime   : %s\n' "$(uptime -p 2>/dev/null || cat /proc/uptime)"
+
+hr "CPU"
+lscpu 2>/dev/null | grep -E '^(Model name|Architecture|CPU\(s\)|Thread|Core|Socket|CPU max MHz)' || true
+printf 'load     : %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"
+
+hr "RAM"
+free -h
+
+hr "GPU / VRAM"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu \
+             --format=csv 2>/dev/null || nvidia-smi
+else
+  echo "nvidia-smi unavailable - GPUs from PCI:"
+  lspci 2>/dev/null | grep -Ei 'vga|3d|display' || echo "  (no data)"
+fi
+
+hr "disks"
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT 2>/dev/null | head -30
+printf '\n'
+df -h /host 2>/dev/null | tail -n +1
+
+hr "temperatures"
+sensors 2>/dev/null | head -20 || echo "(sensors not configured: sudo sensors-detect)"
+
+hr "host processes (top 10 CPU)"
+ps -eo pid,user,pcpu,pmem,comm --sort=-pcpu 2>/dev/null | head -11
+
+hr "docker"
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || echo "(no access to /var/run/docker.sock)"

@@ -1,0 +1,41 @@
+# ============================================================================
+#  Overlay: Windows - Docker Desktop (WSL2 backend) + Git Bash, files on the
+#  Windows drive. Enabled via COMPOSE_FILE in .env (`./bin/harness` sets this
+#  automatically on first run in Git Bash):
+#
+#    COMPOSE_FILE=docker-compose.yml;docker-compose.windows.yml
+#    COMPOSE_PATH_SEPARATOR=;
+#
+#  WHAT IS MISSING HERE AND WHY:
+#  The containers are Linux containers, so the "host" is the WSL2 VM, not Windows.
+#  The /dev, /sys, /run/udev and /etc/localtime binds have no Windows
+#  equivalent (those paths do not exist on drive C:), so this overlay does not
+#  add them - otherwise the mounts would fail. In practice this means that on
+#  Windows the following do not work: `sensors`, `smartctl`, `nvme`, `lsblk` on
+#  physical disks, or `kill` on Windows processes (`pid: host` = VM processes).
+#
+#  WHAT WORKS: /workspace on the Windows drive, the full router + LiteLLM +
+#  external models, `docker ps` on Docker Desktop containers, GPU via CUDA on WSL
+#  (`nvidia-smi` works, but temperature and power draw show N/A).
+# ============================================================================
+
+services:
+  claude:
+    volumes:
+      # Windows drive at /host. Defaults to the whole C:, you can narrow it in .env:
+      #   HOST_DRIVE=C:/Users/<user>
+      - type: bind
+        source: ${HOST_DRIVE:-C:/}
+        target: /host
+      # Claude Code config from Windows (read-only). Whether the container uses it
+      # is controlled by HARNESS_INHERIT_HOST_CONFIG. To use a different path, set in .env:
+      #   HOST_CLAUDE_DIR=C:/Users/<user>/.claude
+      - ${HOST_CLAUDE_DIR:-${USERPROFILE}/.claude}:/harness/host-claude:ro
+    environment:
+      # Git Bash does not pass the container a TERM that works for the Claude Code TUI.
+      TERM: xterm-256color
+      # Binds from a Windows drive have no POSIX permissions - so the entrypoint
+      # skips chown on /workspace (it would not change anything).
+      HARNESS_PLATFORM: windows
+      # Without the /etc/localtime bind the container does not know the host time zone.
+      TZ: ${TZ:-UTC}

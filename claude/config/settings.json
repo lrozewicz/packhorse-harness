@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Claude Code settings owned by the harness. The generator merges this file with",
+    "`modelPicker` and `env` computed from models.yaml and writes the result to",
+    "generated/managed-settings.json; the entrypoint installs it as the drop-in",
+    "/etc/claude-code/managed-settings.d/10-harness-models.json.",
+    "These are MANAGED settings: they win over user and project settings.",
+    "Keep here what does not follow from model definitions: hooks, permissions, statusLine.",
+    "Keys computed from models.yaml win over this file.",
+    "After a change: ./bin/harness regen.",
+    "MCP servers do NOT go here - see claude/mcp.json (managed settings accept",
+    "only http/sse servers and reject stdio)."
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(playwright-cli:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/harness-context",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

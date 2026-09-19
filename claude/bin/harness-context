@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  SessionStart hook: adds this harness's model list to the session context.
+#
+#  Why: Claude Code's built-in knowledge of models lives in its own system
+#  prompt ("Claude 5 family, Haiku 4.5, …") and cannot be edited.
+#  `modelPicker` entries are visible in the UI (`/model`), but the model does NOT see them,
+#  so when asked "which models are available?" it listed only the Claude family.
+#  This hook returns `hookSpecificOutput.additionalContext` with the actual state
+#  of the harness (schema verified in the 2.1.277 binary).
+#
+#  stdin carries the hook JSON (including the `model` field - the current session's model).
+# ============================================================================
+set -uo pipefail
+
+REGISTRY="${HARNESS_GENERATED_DIR:-/harness/generated}/registry.json"
+STDIN_JSON="$(cat 2>/dev/null || true)"
+
+emit() {  # $1 = context text
+  jq -n --arg ctx "$1" \
+    '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
+}
+
+[ -r "$REGISTRY" ] || { emit "Harness: $REGISTRY is missing (run ./bin/harness regen on the host)."; exit 0; }
+
+current_model="$(printf '%s' "$STDIN_JSON" | jq -r '.model // empty' 2>/dev/null)"
+
+context="$(
+  jq -r --arg current "$current_model" '
+    def row:
+      "- " + .id
+      + " — " + .label
+      + " (context window " + (.contextTokens|tostring) + " / max output " + (.maxOutputTokens|tostring)
+      + ", via LiteLLM -> " + .via + ")"
+      + (if $current != "" and .id == $current then "   <- model of this session" else "" end);
+
+    "Harness context (Packhorse), generated from models.yaml:",
+    "",
+    ("Router mode: " + .mode + (if .mode == "hybrid"
+        then " - Claude family models go to the Anthropic subscription, the models listed below go to LiteLLM."
+        else " - ALL traffic, including Claude Code internal tasks, goes to LiteLLM." end)),
+    "",
+    (if (.models | length) > 0
+      then "External models available in this session (select via /model, `claude --model <id>` or the `model:` field in a subagent definition):",
+           (.models[] | row)
+      else "No external models are defined (the `models` section in models.yaml is empty)."
+     end),
+    "",
+    "When listing available models, include these entries alongside the Claude models - they are actually reachable in this session.",
+    (if .mode == "standalone"
+      then "Note: in standalone mode Anthropic server-side tools (WebSearch, WebFetch) do not work - use playwright-cli or curl instead."
+      else empty end)
+  ' "$REGISTRY" 2>/dev/null
+)"
+
+[ -n "$context" ] || context="Harness: could not read $REGISTRY."
+emit "$context"

@@ -1,0 +1,219 @@
+# ============================================================================
+#  Packhorse Harness - Claude Code in a container with full host access,
+#  plus your own external models via LiteLLM.
+#
+#    ./bin/harness up          - start the router and LiteLLM
+#    ./bin/harness claude      - Claude Code session (TUI)
+#    ./bin/harness shell       - shell in the container (with host access)
+#
+#  Request path:
+#    claude --ANTHROPIC_BASE_URL--> router:8787 --+-- model from models.yaml --> litellm:4000 --> provider
+#                                                 +-- Opus/Sonnet/Haiku ---> api.anthropic.com (subscription)
+#
+#  SECURITY WARNING: the `claude` service is deliberately privileged
+#  (privileged, pid: host, host / at /host, passwordless sudo). The container isolates
+#  tool versions and configuration, NOT the host. See README.md for details.
+# ============================================================================
+
+name: packhorse
+
+x-harness-labels: &harness-labels
+  labels:
+    packhorse.component: "harness"
+
+services:
+
+  # --------------------------------------------------------------------------
+  # 1) Config generator: models.yaml -> generated/*
+  #    Runs before the other services and exits successfully.
+  # --------------------------------------------------------------------------
+  harness-init:
+    build:
+      context: ./router
+    image: packhorse/router:local
+    container_name: packhorse-init
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["node", "bin/generate.js"]
+    environment:
+      HARNESS_MODE: ${HARNESS_MODE:-}
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./models.yaml:/harness/models.yaml:ro
+      - ./litellm/config.base.yaml:/harness/litellm/config.base.yaml:ro
+      - ./claude/config/settings.json:/harness/claude/config/settings.json:ro
+      - ./generated:/harness/generated
+    restart: "no"
+    networks: [harness]
+    <<: *harness-labels
+
+  # --------------------------------------------------------------------------
+  # 2) LiteLLM - proxy translating Anthropic Messages to OpenAI-compatible APIs.
+  #    Port 4000 stays on the compose network; it is not published to the host.
+  # --------------------------------------------------------------------------
+  litellm:
+    image: ${LITELLM_IMAGE:-ghcr.io/berriai/litellm:main-stable}
+    container_name: packhorse-litellm
+    depends_on:
+      harness-init:
+        condition: service_completed_successfully
+    command:
+      - "--config"
+      - "/etc/litellm/litellm.config.yaml"
+      - "--port"
+      - "4000"
+      - "--num_workers"
+      - "1"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      LITELLM_MODE: PRODUCTION
+      STORE_MODEL_IN_DB: "False"
+      DISABLE_SCHEMA_UPDATE: "True"
+      NO_DOCS: "True"
+    # Provider keys (ZAI_API_KEY etc.) - only this container needs them.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./generated:/etc/litellm:ro
+    # ports:
+    #   - "127.0.0.1:4000:4000"   # uncomment only for debugging from the host
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [harness]
+    <<: *harness-labels
+
+  # --------------------------------------------------------------------------
+  # 3) Router - the only endpoint Claude Code sees.
+  #    Splits traffic: models from models.yaml -> LiteLLM, everything else -> Anthropic.
+  # --------------------------------------------------------------------------
+  router:
+    build:
+      context: ./router
+    image: packhorse/router:local
+    container_name: packhorse-router
+    depends_on:
+      harness-init:
+        condition: service_completed_successfully
+      litellm:
+        condition: service_healthy
+    environment:
+      HARNESS_ROUTER_HOST: 0.0.0.0
+      HARNESS_ROUTER_PORT: "8787"
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      ANTHROPIC_UPSTREAM_BASE_URL: ${ANTHROPIC_UPSTREAM_BASE_URL:-https://api.anthropic.com}
+      HARNESS_MODE: ${HARNESS_MODE:-}
+      HARNESS_LOG_LEVEL: ${HARNESS_LOG_LEVEL:-}
+    volumes:
+      - ./models.yaml:/harness/models.yaml:ro
+    restart: unless-stopped
+    networks: [harness]
+    <<: *harness-labels
+
+  # --------------------------------------------------------------------------
+  # 4) Claude Code - started on demand (`./bin/harness claude`).
+  #    The `cli` profile keeps it out of `docker compose up`.
+  # --------------------------------------------------------------------------
+  claude:
+    build:
+      context: ./claude
+      args:
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-latest}
+        INSTALL_PLAYWRIGHT: ${INSTALL_PLAYWRIGHT:-1}
+        PLAYWRIGHT_BROWSER: ${PLAYWRIGHT_BROWSER:-chromium}
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+        DOCKER_GID: ${DOCKER_GID:-984}
+    image: packhorse/claude:local
+    profiles: ["cli"]
+    depends_on:
+      harness-init:
+        condition: service_completed_successfully
+      router:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    working_dir: ${CONTAINER_WORKDIR:-/workspace}
+
+    # ---- full host access --------------------------------------------------
+    privileged: true            # all capabilities + unmasked /dev
+    pid: host                   # sees and can kill host processes
+    ipc: host                   # shared memory (X11, CUDA IPC)
+    cgroup: host                # host cgroup statistics
+    userns_mode: host           # UIDs map 1:1 to the host
+    cap_add: ["ALL"]
+    security_opt:
+      - apparmor=unconfined
+      - seccomp=unconfined
+      - label=disable
+    # GPU (CPU/RAM are read from /proc, VRAM via nvidia-smi).
+    # Without NVIDIA / nvidia-container-toolkit: comment out the `gpus` line.
+    gpus: all
+    devices: []
+    device_cgroup_rules:
+      - "a *:* rwm"             # access to all block and character devices
+    sysctls: {}
+    ulimits:
+      nofile: 65536
+      nproc: 65536
+
+    environment:
+      # All API traffic goes to the router; the flag marks it as first-party,
+      # so subscription login works just as it does with api.anthropic.com.
+      ANTHROPIC_BASE_URL: http://router:8787
+      _CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL: "1"
+      # Set in .env only in standalone mode (no Anthropic subscription).
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      CLAUDE_CONFIG_DIR: /home/claude/.claude
+      HARNESS_ROUTER_HEALTH: http://router:8787/healthz
+      HARNESS_ROUTER_WAIT: "30"
+      HARNESS_GENERATED_DIR: /harness/generated
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      TERM: ${TERM:-xterm-256color}
+      HOST_ROOT: /host
+      # 1 = the container inherits the host's Claude Code config (~/.claude: skills,
+      # agents, commands, CLAUDE.md, permissions and env from settings.json). 0 = clean.
+      HARNESS_INHERIT_HOST_CONFIG: ${HARNESS_INHERIT_HOST_CONFIG:-1}
+
+    volumes:
+      # Claude Code login, history and settings (a volume, not a host directory)
+      - claude-config:/home/claude/.claude
+      # harness config: models.yaml + generated/ (read-only)
+      - ./models.yaml:/harness/models.yaml:ro
+      - ./generated:/harness/generated:ro
+      - ./claude/mcp.json:/harness/claude/mcp.json:ro
+      # the harness's own Claude Code config (agents/, skills/, commands/,
+      # CLAUDE.md) - the entrypoint symlinks it into ~/.claude in the container
+      - ./claude/config:/harness/claude/config:ro
+      - ./examples:/harness/examples:ro
+      # working directory - this is where Claude Code works on your code
+      - ${WORKSPACE_DIR:-..}:/workspace
+      # control of the host's Docker (the docker client is in the image)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The host filesystem (/host, /dev, /sys, /run/udev, /etc/localtime) is
+      # added by a platform-specific overlay - see COMPOSE_FILE in .env:
+      #   docker-compose.linux.yml    (Linux: the whole host /, devices, sensors)
+      #   docker-compose.windows.yml  (Docker Desktop + Git Bash: Windows drive)
+
+    # Access to services listening on the host's loopback.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [harness]
+    <<: *harness-labels
+
+networks:
+  harness:
+    name: packhorse
+    driver: bridge
+
+volumes:
+  claude-config:
+    name: packhorse-config

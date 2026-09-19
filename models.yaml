@@ -1,0 +1,79 @@
+# ============================================================================
+#  models.yaml - the SINGLE source of truth for models in this harness.
+#
+#  This file generates (harness-init container, `./bin/harness regen`):
+#    generated/litellm.config.yaml  -> LiteLLM config (model_list)
+#    generated/managed-settings.json-> /model entries for Claude Code
+#    generated/registry.json        -> overview for `./bin/harness models`
+#  The router reads this file directly, so a model's `id` is the one name
+#  used everywhere: in /model, in the router and in LiteLLM.
+#
+#  Secrets do NOT go in this file - you give a variable name (api_key_env),
+#  its value lives in .env and is injected only into the LiteLLM container.
+# ============================================================================
+
+router:
+  # hybrid     - Opus/Sonnet/Fable/Haiku go to api.anthropic.com on the subscription,
+  #              models from the `models` list go to LiteLLM (explicit choice in /model).
+  # standalone - ALL traffic goes to LiteLLM; no subscription needed.
+  #              Mapping of Claude's slots to external models: the `standalone` section.
+  mode: hybrid
+
+  standalone:
+    opus: glm-5.3-flash
+    sonnet: glm-5.3-flash
+    haiku: glm-5.3-flash
+    default: glm-5.3-flash
+
+  # WebSearch/WebFetch/code_execution are executed by the Anthropic API, not the OpenAI backend.
+  # Such requests go to Anthropic even if the model is external (hybrid mode only).
+  server_tools_to_anthropic: true
+  anthropic_fallback_model: claude-haiku-4-5-20251001
+
+  strip_anthropic_betas: true
+  strip_cache_control: false      # true if the backend rejects cache_control
+  log_level: info                 # info | debug (debug logs request field names)
+
+# Defaults for every entry in `models` (each can be overridden per model).
+defaults:
+  api: openai                     # openai | openai-responses | anthropic | <any LiteLLM prefix>
+  behaves_as: claude-sonnet-5     # which known model it poses as on the client side (suppresses the unknown-model warning)
+  context_tokens: 200000
+  max_output_tokens: 32768
+  thinking: strip                 # strip | keep | disabled
+  effort: strip                   # strip | keep | low | medium | high
+
+models:
+  # --------------------------------------------------------------------------
+  # GLM 5.3 Flash (z.ai) - reference entry. To add another model: copy this
+  # block, change `id`, `api_base`, `api_key_env` and run `./bin/harness regen`.
+  # --------------------------------------------------------------------------
+  - id: glm-5.3-flash                            # name seen by Claude Code and LiteLLM
+    label: GLM 5.3 Flash (z.ai)                  # label in /model
+    description: external model via LiteLLM (outside the subscription)
+    api: openai                                  # Chat Completions; for /api/v1 use openai-responses
+    upstream_model: glm-5.3-flash                # model name at the provider
+    api_base: https://api.z.ai/api/coding/paas/v4
+    api_key_env: ZAI_API_KEY                     # name of the .env variable, not the key itself
+    behaves_as: claude-sonnet-5
+    context_tokens: 200000
+    max_output_tokens: 65536
+    thinking: strip
+    effort: strip
+    extra_body:                                  # added to every request to this model
+      temperature: 0.6
+      top_p: 0.95
+    # litellm_params: {}                         # escape hatch: merged last, takes precedence
+
+  # --------------------------------------------------------------------------
+  # Example (commented out): a second OpenAI-compatible provider.
+  # --------------------------------------------------------------------------
+  # - id: qwen3-max
+  #   label: Qwen3 Max (DashScope)
+  #   description: cheap routine tasks
+  #   api: openai
+  #   upstream_model: qwen3-max
+  #   api_base: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  #   api_key_env: DASHSCOPE_API_KEY
+  #   max_output_tokens: 32768
+  #   aliases: [qwen, qwen-max]

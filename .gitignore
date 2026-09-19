@@ -1,0 +1,6 @@
+.env
+.secret
+generated/*
+!generated/.gitkeep
+router/node_modules/
+*.log

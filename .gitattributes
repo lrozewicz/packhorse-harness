@@ -1,0 +1,29 @@
+# ============================================================================
+#  Line endings. Scripts and config files MUST be LF because they end up in
+#  Linux containers: a CRLF file fails with
+#  "bad interpreter: /usr/bin/env bash^M" or silently breaks the YAML.
+#  Applies regardless of the user's core.autocrlf setting.
+# ============================================================================
+
+* text=auto eol=lf
+
+*.sh            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.json          text eol=lf
+*.js            text eol=lf
+*.md            text eol=lf
+.env.example    text eol=lf
+.gitignore      text eol=lf
+
+# Scripts without an extension (executed directly in the container).
+bin/harness             text eol=lf
+claude/bin/hostinfo     text eol=lf
+claude/bin/harness-context text eol=lf
+claude/entrypoint.sh    text eol=lf
+
+# Files Git must never touch.
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.ico  binary
