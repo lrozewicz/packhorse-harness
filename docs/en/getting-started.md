@@ -36,7 +36,7 @@ If `.env` does not exist, `./bin/harness` creates it from `.env.example`, fills 
 ./bin/harness claude
 ```
 
-That is all you need. On the first run it builds the Claude Code image (about 3 GB with the browser; set `INSTALL_PLAYWRIGHT=0` in `.env` to skip it), and Docker Compose starts the dependencies on its own — `harness-init` (config generator) → LiteLLM → router — and waits until they are healthy. They keep running in the background after the session ends.
+That is all you need. On the first run it builds the Claude Code image (about 3 GB with the browser; set `INSTALL_PLAYWRIGHT=0` in `.env` to skip it), and Docker Compose starts the dependencies on its own — `harness-init` (config generator) → LiteLLM → router — and waits until they are healthy. When the last session ends, the services it started are stopped again, so nothing keeps running in the background.
 
 Optional commands:
 
@@ -46,6 +46,16 @@ Optional commands:
 ```
 
 `up` is handy on the first run (a broken `models.yaml` or LiteLLM config shows up as a clear error before the TUI starts) and **after updating the code**: it rebuilds the router image, while `./bin/harness claude` reuses the existing one. `test` is purely diagnostic.
+
+### Stopping the services automatically
+
+When a session (`claude`, `shell`, `ask`, …) had to start LiteLLM and the router itself, `./bin/harness` stops them again after the **last** session ends — also when you press Ctrl+C or close the terminal. The rules:
+
+- services started explicitly with `./bin/harness up` or `restart` keep running until `./bin/harness down`,
+- while another session is still open, the services stay up; the one that ends last stops them,
+- `HARNESS_AUTO_STOP=0` in `.env` (or in the environment) turns this off.
+
+The trade-off is start-up time: each new session after a stop waits for LiteLLM to become healthy again (usually 10-20 s). If you open sessions often, run `./bin/harness up` once and leave the services running.
 
 Inside the session run `/login` (subscription), then `/model` — your external models are listed next to the Claude models. The login is stored in the Docker volume `packhorse-config`, so it survives restarts and never touches `~/.claude` on the host.
 

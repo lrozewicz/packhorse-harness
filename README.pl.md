@@ -45,7 +45,7 @@ cp .env.example .env         # uzupełnij DOCKER_GID, WORKSPACE_DIR i klucze dos
 ./bin/harness claude         # startuje wszystko, czego potrzebuje, potem sesję (w niej /login, potem /model)
 ```
 
-Pierwsze uruchomienie samo buduje obrazy i startuje generator konfiguracji, LiteLLM i router. Opcjonalnie: `./bin/harness up` stawia usługi osobno i pokazuje ich stan (przydaje się też po aktualizacji, bo przebudowuje router), a `./bin/harness test` wysyła jedno zapytanie do modelu zewnętrznego, żeby sprawdzić klucz dostawcy. `./bin/harness` bez argumentów wypisuje wszystkie komendy. Pełny opis: [Pierwsze kroki](docs/pl/getting-started.md).
+Pierwsze uruchomienie samo buduje obrazy i startuje generator konfiguracji, LiteLLM i router, a po zakończeniu ostatniej sesji je zatrzymuje. Opcjonalnie: `./bin/harness up` stawia usługi osobno i pokazuje ich stan (przydaje się też po aktualizacji, bo przebudowuje router), a `./bin/harness test` wysyła jedno zapytanie do modelu zewnętrznego, żeby sprawdzić klucz dostawcy. `./bin/harness` bez argumentów wypisuje wszystkie komendy. Pełny opis: [Pierwsze kroki](docs/pl/getting-started.md).
 
 ## Dokumentacja
 

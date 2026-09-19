@@ -36,7 +36,7 @@ Gdy `.env` nie istnieje, `./bin/harness` tworzy go z `.env.example`, wpisuje UID
 ./bin/harness claude
 ```
 
-To wystarczy. Przy pierwszym uruchomieniu komenda buduje obraz Claude Code (ok. 3 GB razem z przeglądarką; `INSTALL_PLAYWRIGHT=0` w `.env` ją pomija), a Docker Compose sam startuje zależności — `harness-init` (generator konfiguracji) → LiteLLM → router — i czeka, aż będą zdrowe. Po zakończeniu sesji działają dalej w tle.
+To wystarczy. Przy pierwszym uruchomieniu komenda buduje obraz Claude Code (ok. 3 GB razem z przeglądarką; `INSTALL_PLAYWRIGHT=0` w `.env` ją pomija), a Docker Compose sam startuje zależności — `harness-init` (generator konfiguracji) → LiteLLM → router — i czeka, aż będą zdrowe. Gdy kończy się ostatnia sesja, usługi, które sama uruchomiła, są z powrotem zatrzymywane — nic nie zostaje w tle.
 
 Komendy opcjonalne:
 
@@ -46,6 +46,16 @@ Komendy opcjonalne:
 ```
 
 `up` przydaje się przy pierwszym uruchomieniu (zepsuty `models.yaml` albo konfiguracja LiteLLM pokażą czytelny błąd, zanim wystartuje TUI) oraz **po aktualizacji kodu**: przebudowuje obraz routera, a `./bin/harness claude` używa istniejącego. `test` służy wyłącznie diagnostyce.
+
+### Automatyczne zatrzymywanie usług
+
+Jeśli sesja (`claude`, `shell`, `ask`, …) musiała sama uruchomić LiteLLM i router, `./bin/harness` zatrzymuje je po zakończeniu **ostatniej** sesji — także po Ctrl+C albo zamknięciu terminala. Zasady:
+
+- usługi uruchomione jawnie przez `./bin/harness up` albo `restart` działają aż do `./bin/harness down`,
+- dopóki otwarta jest inna sesja, usługi zostają; zatrzymuje je ta, która kończy się ostatnia,
+- `HARNESS_AUTO_STOP=0` w `.env` (albo w środowisku) wyłącza ten mechanizm.
+
+Ceną jest czas startu: każda nowa sesja po zatrzymaniu czeka, aż LiteLLM znów będzie zdrowy (zwykle 10–20 s). Jeśli często otwierasz sesje, wykonaj raz `./bin/harness up` i zostaw usługi włączone.
 
 W sesji wykonaj `/login` (subskrypcja), potem `/model` — Twoje modele zewnętrzne są na liście obok modeli Claude. Logowanie ląduje w wolumenie Dockera `packhorse-config`, więc przeżywa restarty i nie dotyka `~/.claude` na hoście.
 

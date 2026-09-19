@@ -28,6 +28,7 @@ Testy end-to-end z września 2026 na Pop!\_OS 24.04 z Dockerem 29.8.0, Compose v
 | warstwy konfiguracji, flaga `1` | `config: 12 items from the harness/image/host layers`; `skills/playwright-cli` → obraz (wygrywa z hostem), pozostałe skille → `/harness/host-claude`; `05-host-settings.json` utworzony |
 | warstwy konfiguracji, flaga `0` | tylko warstwa obrazu + `synced`, brak `05-host-settings.json`; powrót do `1` przywraca linki |
 | własny plik w wolumenie | prawdziwy `~/.claude/skills/<nazwa>/` nie jest nadpisany ani usunięty przy sprzątaniu |
+| automatyczne zatrzymywanie usług | usługi uruchomione przez sesję gasną po jej końcu (także po SIGHUP / zamknięciu terminala); przy dwóch sesjach pierwsza zostawia je włączone, a ostatnia zatrzymuje; usługi z `up` i `HARNESS_AUTO_STOP=0` działają dalej |
 | Python / pip | `Python 3.11.2`, `pip 23.0.1`, `uv`, `pipx`; `pip install requests` bez venva działa |
 | `./bin/harness regen` po zmianie trybu | generator + odtworzenie usług, router raportuje nowy tryb w `/healthz` |
 

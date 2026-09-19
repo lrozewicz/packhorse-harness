@@ -28,6 +28,7 @@ End-to-end checks run in September 2026 on Pop!\_OS 24.04 with Docker 29.8.0, Co
 | config layers, flag `1` | `config: 12 items from the harness/image/host layers`; `skills/playwright-cli` → image (wins over host), other skills → `/harness/host-claude`; `05-host-settings.json` created |
 | config layers, flag `0` | only the image layer + `synced`, no `05-host-settings.json`; switching back to `1` restores the links |
 | own file in the volume | a real `~/.claude/skills/<name>/` is neither overwritten nor removed during cleanup |
+| auto-stop of services | services started by a session are stopped after it ends (also on SIGHUP / closed terminal); with two sessions open, the first to end leaves them up and the last stops them; services started with `up` and `HARNESS_AUTO_STOP=0` keep running |
 | Python / pip | `Python 3.11.2`, `pip 23.0.1`, `uv`, `pipx`; `pip install requests` without a venv works |
 | `./bin/harness regen` after a mode change | generator + service recreation, the router reports the new mode in `/healthz` |
 

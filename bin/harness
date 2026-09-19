@@ -102,23 +102,79 @@ ensure_host_claude_dir() {
 }
 
 # The Claude Code image is built only on first use (`up` starts the services).
+# --- auto-stop -----------------------------------------------------------------
+# `compose run claude` starts LiteLLM and the router on its own (depends_on). If a
+# session started them, they are stopped again when the last session ends. Services
+# started explicitly with `up`/`restart` are left running. HARNESS_AUTO_STOP=0 (env or
+# .env) turns this off.
+AUTOSTART_MARKER="generated/.autostarted"
+
+env_setting() {
+  local name="$1" default="$2" value
+  value="${!name:-}"
+  [ -n "$value" ] || value="$(sed -n "s/^${name}=//p" .env 2>/dev/null | tail -n 1)"
+  printf '%s' "${value:-$default}"
+}
+
+services_running() {
+  "${DC[@]}" ps --services --filter status=running 2>/dev/null | grep -qx router
+}
+
+# Name of this session's container, so that a container still shutting down after
+# Ctrl+C or a closed terminal is not mistaken for another session.
+SESSION_CONTAINER="packhorse-claude-$$-$(date +%s)"
+
+other_sessions_running() {
+  local project
+  project="$("${DC[@]}" config 2>/dev/null | sed -n 's/^name: //p' | head -n 1)"
+  docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=${project:-packhorse}" \
+    --filter label=com.docker.compose.service=claude 2>/dev/null | grep -vxF "$SESSION_CONTAINER" | grep -q .
+}
+
+AUTO_STOP_DONE=0
+auto_stop() {
+  [ "$AUTO_STOP_DONE" = 1 ] && return 0
+  AUTO_STOP_DONE=1
+  [ "$(env_setting HARNESS_AUTO_STOP 1)" = 1 ] || return 0
+  [ -f "$AUTOSTART_MARKER" ] || return 0
+  if other_sessions_running; then
+    info "other sessions are still running - leaving the services up"
+    return 0
+  fi
+  info "last session ended - stopping LiteLLM and the router (HARNESS_AUTO_STOP=0 keeps them running)"
+  "${DC[@]}" stop litellm router >/dev/null 2>&1 || true
+  rm -f "$AUTOSTART_MARKER"
+}
+
 compose_run_claude() {
   ensure_host_claude_dir
   if ! docker image inspect packhorse/claude:local >/dev/null 2>&1; then
     say "first run - building the Claude Code image"
     "${DC[@]}" build claude
   fi
+  # This session is about to start the services itself -> they may be stopped afterwards.
+  services_running || touch "$AUTOSTART_MARKER"
+  # Closing the terminal (HUP) or Ctrl+C still ends in auto_stop.
+  trap 'auto_stop; exit 130' INT
+  trap 'auto_stop; exit 129' HUP
+  trap 'auto_stop; exit 143' TERM
+  local rc=0
   if [ -t 0 ] && [ -t 1 ]; then
     # interactive (TUI, /login) - via winpty in Git Bash
-    "${TTYWRAP[@]}" "${DC[@]}" run --rm --quiet-pull claude "$@"
+    "${TTYWRAP[@]}" "${DC[@]}" run --rm --quiet-pull --name "$SESSION_CONTAINER" claude "$@" || rc=$?
   else
     # piped (`echo ... | harness claude -p`, CI) - no TTY allocation
-    "${DC[@]}" run --rm --quiet-pull -T claude "$@"
+    "${DC[@]}" run --rm --quiet-pull -T --name "$SESSION_CONTAINER" claude "$@" || rc=$?
   fi
+  trap - INT HUP TERM
+  auto_stop
+  return "$rc"
 }
 
 cmd_up() {
   ensure_env
+  # Explicitly started services are not stopped when a session ends.
+  rm -f "$AUTOSTART_MARKER"
   say "starting services (harness-init -> litellm -> router)"
   "${DC[@]}" up -d --build router
   cmd_status
@@ -198,8 +254,8 @@ main() {
     hostinfo) ensure_env; compose_run_claude exec hostinfo ;;
     login)    ensure_env; info "in the session, type /login and finish logging in in the browser"; compose_run_claude ;;
     up)       cmd_up ;;
-    down)     "${DC[@]}" down "$@" ;;
-    restart)  "${DC[@]}" up -d --force-recreate --wait litellm router ;;
+    down)     rm -f "$AUTOSTART_MARKER"; "${DC[@]}" down "$@" ;;
+    restart)  rm -f "$AUTOSTART_MARKER"; "${DC[@]}" up -d --force-recreate --wait litellm router ;;
     build)    ensure_env; "${DC[@]}" build "${@:-}" ;;
     status)   cmd_status ;;
     logs)     "${DC[@]}" logs -f --tail 100 "${@:-router}" ;;
