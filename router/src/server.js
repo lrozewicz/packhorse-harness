@@ -17,6 +17,16 @@ const { pipeline } = require('node:stream/promises');
 const { decide } = require('./routing');
 const { shapeForLitellm, headersForUpstream, authKind, HOP_BY_HOP } = require('./transform');
 
+/**
+ * undici reports every network-level failure as a bare "fetch failed"; the code that
+ * says what actually happened (ETIMEDOUT, ECONNRESET, ENOTFOUND, ...) sits in err.cause.
+ */
+function reason(err) {
+  const cause = err && err.cause;
+  const detail = cause && (cause.code || cause.message);
+  return detail ? `${err.message} (${detail})` : String(err && err.message ? err.message : err);
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -143,7 +153,7 @@ function createServer({ config, logger, reload }) {
       try {
         await pipeline(Readable.fromWeb(upstream.body), res);
       } catch (err) {
-        if (!abort.signal.aborted) logger.error(`${prefix} STREAM ${err.message}`);
+        if (!abort.signal.aborted) logger.error(`${prefix} STREAM ${reason(err)}`);
         res.destroy();
       }
     } catch (err) {
@@ -152,9 +162,10 @@ function createServer({ config, logger, reload }) {
         return;
       }
       stats.errors += 1;
-      logger.error(`${prefix} ${Date.now() - started}ms ${err.message}`);
+      const why = reason(err);
+      logger.error(`${prefix} ${Date.now() - started}ms ${why}`);
       if (!res.headersSent) {
-        json(res, 502, { type: 'error', error: { type: 'api_error', message: `harness-router: ${err.message}` } });
+        json(res, 502, { type: 'error', error: { type: 'api_error', message: `harness-router: ${why}` } });
       } else {
         res.end();
       }

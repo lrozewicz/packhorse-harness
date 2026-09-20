@@ -2,9 +2,18 @@
 'use strict';
 /** Router entry point: `node bin/router.js` (container: the `router` service). */
 
+const net = require('node:net');
+
 const { load } = require('../src/config');
 const { createLogger } = require('../src/logger');
 const { createServer } = require('../src/server');
+
+// Happy Eyeballs: Node gives each address family 250 ms to connect, and the container
+// usually has no IPv6 route, so the IPv4 attempt carries the whole budget. On a slow
+// link the TCP handshake to api.anthropic.com takes longer than that and the request
+// dies as ETIMEDOUT ("fetch failed") even though the network is fine - a retry storm
+// in Claude Code. The fallback only has to be fast enough to matter when IPv6 hangs.
+net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
 
 const MODELS_FILE = process.env.HARNESS_MODELS_FILE || '/harness/models.yaml';
 

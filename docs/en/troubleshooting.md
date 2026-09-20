@@ -24,6 +24,7 @@ HARNESS_LOG_LEVEL=debug ./bin/harness regen   # + request fields and applied rew
 | symptom | cause / fix |
 | --- | --- |
 | `API Error: Connection refused` when `claude` starts | the router is down — `./bin/harness up` (the entrypoint waits up to 30 s for `/healthz`) |
+| `502 harness-router: fetch failed (ETIMEDOUT)` now and then, always after ~250 ms | Happy Eyeballs on a slow link — see the pitfall below; after pulling this fix rebuild the router: `./bin/harness compose up -d --build router` |
 | `404 … /responses` | `use_chat_completions_url_for_anthropic_messages` in `litellm/config.base.yaml` |
 | `AuthenticationError` from LiteLLM | the `api_key_env` variable is missing in `.env`; `harness-init` prints a warning with its name |
 | model missing from `/model` | `./bin/harness regen` not run, or the `id` contains `haiku` |
@@ -42,6 +43,7 @@ HARNESS_LOG_LEVEL=debug ./bin/harness regen   # + request fields and applied rew
 - **`reasoning effort high` → 400.** LiteLLM converts `thinking.budget_tokens` into `reasoning_effort`; a large budget becomes `high`, which a backend may not know. Hence `thinking: strip` by default (set the reasoning level through `extra_body`).
 - **`max_tokens` above the model's real output.** The router caps it to `max_output_tokens` from `models.yaml` — only for LiteLLM traffic, so Opus/Sonnet keep their full window.
 - **`WebSearch`/`WebFetch` must go to Anthropic.** These tools run on Anthropic's side; in `hybrid` mode the router detects server-side tool types and routes such requests to Anthropic with `anthropic_fallback_model`.
+- **Happy Eyeballs against a slow link (`fetch failed` every so often).** Node gives each address family 250 ms to connect (`autoSelectFamily`, on by default since Node 20). The container has no IPv6 route, so the AAAA attempt fails instantly and the whole budget falls on IPv4 — and a TCP handshake to `api.anthropic.com` slower than that (a loaded or high-latency link) is aborted as `ETIMEDOUT`. undici reports it as a bare `fetch failed`, the router turns it into a 502 and Claude Code starts retrying. `router/bin/router.js` raises the limit to 5 s. The symptom is recognizable in `./bin/harness logs router` by the constant ~257 ms on every failed request; the router appends `err.cause` to the message, so the code is visible in the log and in the 502 itself.
 - **Client disconnect mid-SSE** does not leave an unhandled `AbortError` — the stream goes through `stream/promises.pipeline` with its own `catch`, and uncaught errors are logged without killing the process.
 - **`docker compose restart` does not reload configuration or rebuild the router** — `./bin/harness regen` uses `run --build` and `up -d --force-recreate --wait`.
 - **Named volumes mount as `root:root`**, so Claude Code could not save the login — the entrypoint fixes the owner of `~/.claude` before dropping root (`gosu`).
