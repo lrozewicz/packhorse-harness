@@ -51,6 +51,7 @@ Router czyta `models.yaml` bezpośrednio, więc `id` jest **jedną nazwą używa
 | `context_tokens`, `max_output_tokens` | okno i limit wyjścia; router przycina `max_tokens` do tego drugiego |
 | `thinking` | `strip` \| `keep` \| `disabled` |
 | `effort` | `strip` \| `keep` \| `low` \| `medium` \| `high` |
+| `vision` | `false` dla modelu tylko tekstowego: router zamienia bloki obrazów i PDF-ów (także w wynikach narzędzi) na krótką notkę i informuje model, że ich nie widzi (domyślnie `true`) |
 | `drop_fields` | pola requestu usuwane przed przekazaniem |
 | `extra_body` | parametry specyficzne dla dostawcy (temperatura, poziom rozumowania, …) |
 | `litellm_params` | wyjście awaryjne — scalane na końcu, wygrywa z wyliczonymi wartościami |

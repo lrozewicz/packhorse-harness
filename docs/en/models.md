@@ -51,6 +51,7 @@ The router reads `models.yaml` directly, so `id` is **one name used everywhere**
 | `context_tokens`, `max_output_tokens` | window and output limit; the router caps `max_tokens` to the latter |
 | `thinking` | `strip` \| `keep` \| `disabled` |
 | `effort` | `strip` \| `keep` \| `low` \| `medium` \| `high` |
+| `vision` | `false` for a text-only model: the router replaces image and PDF blocks (also in tool results) with a short note and tells the model it cannot see them (default `true`) |
 | `drop_fields` | request fields removed before forwarding |
 | `extra_body` | provider-specific parameters (temperature, reasoning level, …) |
 | `litellm_params` | escape hatch — merged last and wins over computed values |

@@ -29,6 +29,7 @@ const MODEL_DEFAULTS = {
   max_output_tokens: 32768,
   thinking: 'strip',
   effort: 'strip',
+  vision: true,
   extra_body: {},
   drop_fields: [],
   aliases: []
@@ -105,6 +106,7 @@ function normalizeModel(raw, defaults, index) {
     maxOutputTokens: Number(entry.max_output_tokens) || 0,
     thinking: entry.thinking,
     effort: entry.effort,
+    vision: bool(entry.vision, true),
     extraBody: entry.extra_body && typeof entry.extra_body === 'object' ? entry.extra_body : {},
     dropFields: Array.isArray(entry.drop_fields) ? entry.drop_fields : [],
     apiKeyEnv: entry.api_key_env || null,

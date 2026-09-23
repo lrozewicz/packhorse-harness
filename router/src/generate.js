@@ -105,6 +105,7 @@ function registry(config) {
       maxOutputTokens: m.maxOutputTokens,
       thinking: m.thinking,
       effort: m.effort,
+      vision: m.vision,
       aliases: m.aliases,
       extraBody: m.extraBody
     }))

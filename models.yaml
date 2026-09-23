@@ -42,6 +42,7 @@ defaults:
   max_output_tokens: 32768
   thinking: strip                 # strip | keep | disabled
   effort: strip                   # strip | keep | low | medium | high | max (provider-specific)
+  vision: true                    # false = text-only model: images/PDFs replaced with a note
 
 models:
   # --------------------------------------------------------------------------
@@ -77,6 +78,7 @@ models:
     api_base: https://api.z.ai/api/coding/paas/v4
     api_key_env: ZAI_API_KEY
     behaves_as: claude-opus-5-5
+    vision: false                                # text only: the router replaces images/PDFs with a note
     context_tokens: 1000000
     max_output_tokens: 131072
     thinking: strip

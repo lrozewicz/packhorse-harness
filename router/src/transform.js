@@ -6,7 +6,8 @@
  * fields have no sensible equivalent there and can end in a 400:
  *   - thinking.budget_tokens -> reasoning_effort, which the backend may not support,
  *   - max_tokens larger than the model's actual output window,
- *   - betas / cache_control - Anthropic-only fields.
+ *   - betas / cache_control - Anthropic-only fields,
+ *   - image/document blocks sent to a text-only model (`vision: false`).
  */
 
 const HOP_BY_HOP = new Set([
@@ -19,6 +20,30 @@ function stripCacheControl(node) {
   if (!node || typeof node !== 'object') return;
   delete node.cache_control;
   for (const value of Object.values(node)) stripCacheControl(value);
+}
+
+const MEDIA_BLOCKS = new Set(['image', 'document']);
+
+/** Replaces image/document blocks (also inside tool results) with a text note. Returns the count. */
+function replaceMedia(content, note) {
+  if (!Array.isArray(content)) return 0;
+  let count = 0;
+  content.forEach((block, i) => {
+    if (!block || typeof block !== 'object') return;
+    if (MEDIA_BLOCKS.has(block.type)) {
+      content[i] = { type: 'text', text: note };
+      count += 1;
+    } else if (block.type === 'tool_result') {
+      count += replaceMedia(block.content, note);
+    }
+  });
+  return count;
+}
+
+function appendSystem(body, text) {
+  if (Array.isArray(body.system)) body.system.push({ type: 'text', text });
+  else if (typeof body.system === 'string' && body.system) body.system = `${body.system}\n\n${text}`;
+  else body.system = text;
 }
 
 /** Mutates `body`. Returns the list of changes for the log. */
@@ -56,6 +81,20 @@ function shapeForLitellm(body, model, router) {
     stripCacheControl(body.messages);
     stripCacheControl(body.tools);
     applied.push('cache_control removed');
+  }
+
+  // Text-only model: the provider would reject image blocks, and the model should
+  // know why it sees none, so it does not guess or keep opening image files.
+  if (model.vision === false) {
+    const note = `[image omitted: ${model.id} cannot see images or PDFs]`;
+    let replaced = 0;
+    for (const message of Array.isArray(body.messages) ? body.messages : []) {
+      replaced += replaceMedia(message && message.content, note);
+    }
+    if (replaced) applied.push(`${replaced} image/document block(s) replaced`);
+    appendSystem(body, `You are ${model.id}, a text-only model: you cannot view images or PDFs. ` +
+      'Do not open image or PDF files with Read; work from text (source, SVG, OCR output, metadata) instead.');
+    applied.push('text-only note added');
   }
 
   for (const field of model.dropFields) {
