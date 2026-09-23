@@ -20,7 +20,7 @@ router:
   mode: hybrid
 
   standalone:
-    opus: glm-5.3-flash
+    opus: glm-5.3
     sonnet: glm-5.3-flash
     haiku: glm-5.3-flash
     default: glm-5.3-flash
@@ -41,7 +41,7 @@ defaults:
   context_tokens: 200000
   max_output_tokens: 32768
   thinking: strip                 # strip | keep | disabled
-  effort: strip                   # strip | keep | low | medium | high
+  effort: strip                   # strip | keep | low | medium | high | max (provider-specific)
 
 models:
   # --------------------------------------------------------------------------
@@ -50,20 +50,40 @@ models:
   # --------------------------------------------------------------------------
   - id: glm-5.3-flash                            # name seen by Claude Code and LiteLLM
     label: GLM 5.3 Flash (z.ai)                  # label in /model
-    description: external model via LiteLLM (outside the subscription)
+    description: fast GLM, 3x the Coding Plan quota of GLM 5.3 (outside the subscription)
     api: openai                                  # Chat Completions; for /api/v1 use openai-responses
     upstream_model: glm-5.3-flash                # model name at the provider
     api_base: https://api.z.ai/api/coding/paas/v4
     api_key_env: ZAI_API_KEY                     # name of the .env variable, not the key itself
     behaves_as: claude-sonnet-5
-    context_tokens: 200000
-    max_output_tokens: 65536
-    thinking: strip
-    effort: strip
+    context_tokens: 1000000                      # z.ai docs: 1M window
+    max_output_tokens: 131072                    # z.ai docs: 128K output
+    thinking: strip                              # GLM 5.3 always reasons - never send thinking=disabled
+    effort: max                                  # z.ai accepts low | high | max; max is recommended for coding
     extra_body:                                  # added to every request to this model
-      temperature: 0.6
+      temperature: 1.0                           # z.ai recommended sampling for GLM 5.3
       top_p: 0.95
     # litellm_params: {}                         # escape hatch: merged last, takes precedence
+
+  # --------------------------------------------------------------------------
+  # GLM 5.3 (z.ai) - the full flagship, text only. Slower and uses 3x more
+  # Coding Plan quota than Flash.
+  # --------------------------------------------------------------------------
+  - id: glm-5.3
+    label: GLM 5.3 (z.ai)
+    description: flagship GLM for hard tasks (outside the subscription)
+    api: openai
+    upstream_model: glm-5.3
+    api_base: https://api.z.ai/api/coding/paas/v4
+    api_key_env: ZAI_API_KEY
+    behaves_as: claude-opus-5-5
+    context_tokens: 1000000
+    max_output_tokens: 131072
+    thinking: strip
+    effort: max
+    extra_body:
+      temperature: 1.0
+      top_p: 0.95
 
   # --------------------------------------------------------------------------
   # Example (commented out): a second OpenAI-compatible provider.
