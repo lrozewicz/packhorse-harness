@@ -47,7 +47,7 @@ The router decides per request, based on the `model` field (ids, `aliases`, `mat
 | `router/src/server.js` | HTTP server: proxy, SSE, `/healthz`, `POST /__router/reload` |
 | `router/src/generate.js` | `models.yaml` → LiteLLM config + managed settings + registry |
 | `litellm/config.base.yaml` | global LiteLLM settings (no model definitions) |
-| `claude/Dockerfile` | Claude Code image: host diagnostic tools, Docker CLI, Python, `playwright-cli` |
+| `claude/Dockerfile` | Claude Code image: host diagnostic tools, Docker CLI with the `docker compose` and `docker buildx` plugins, Python, `playwright-cli` |
 | `claude/entrypoint.sh` | managed settings + `CLAUDE.md` → wait for router → drop root → config layers → MCP |
 | `claude/config/` | the harness's own Claude Code config, including the `web-fetch` agent and skill (see [Claude Code configuration](claude-configuration.md)) |
 | `claude/mcp.json` | MCP servers added to every session in the container |

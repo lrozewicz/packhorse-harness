@@ -63,6 +63,6 @@ Pierwsze uruchomienie samo buduje obrazy i startuje generator konfiguracji, Lite
 
 ## Licencja i znaki towarowe
 
-Projekt jest udostępniony na licencji [Apache License 2.0](LICENSE) (zob. też [NOTICE](NOTICE)). Obrazy budowane przez harness pobierają zależności (Claude Code, LiteLLM, Playwright, Docker CLI, …) z oficjalnych źródeł; każda z nich ma własną licencję i warunki użytkowania.
+Projekt jest udostępniony na licencji [Apache License 2.0](LICENSE) (zob. też [NOTICE](NOTICE)). Obrazy budowane przez harness pobierają zależności (Claude Code, LiteLLM, Playwright, Docker CLI, Docker Compose, Docker Buildx, …) z oficjalnych źródeł; każda z nich ma własną licencję i warunki użytkowania.
 
 Packhorse Harness jest niezależnym projektem, niezwiązanym z Anthropic ani przez nią niepopieranym czy sponsorowanym. „Claude” i „Claude Code” są znakami towarowymi Anthropic, PBC. Docker, Playwright, LiteLLM, GLM i inne nazwy są znakami towarowymi ich właścicieli i służą tu wyłącznie do opisu zgodności.

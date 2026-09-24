@@ -61,6 +61,6 @@ The first run builds the images and starts the config generator, LiteLLM and the
 
 ## License and trademarks
 
-Licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). Images built by the harness download their dependencies (Claude Code, LiteLLM, Playwright, Docker CLI, …) from the official sources; each of them has its own license and terms of use.
+Licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). Images built by the harness download their dependencies (Claude Code, LiteLLM, Playwright, Docker CLI, Docker Compose, Docker Buildx, …) from the official sources; each of them has its own license and terms of use.
 
 Packhorse Harness is an independent project and is not affiliated with, endorsed by, or sponsored by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic, PBC. Docker, Playwright, LiteLLM, GLM and other names are trademarks of their respective owners and are used here only to describe compatibility.

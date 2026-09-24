@@ -10,6 +10,8 @@ ARG HOST_UID=1000
 ARG HOST_GID=1000
 ARG DOCKER_GID=984
 ARG DOCKER_CLI_VERSION=27.5.1
+ARG DOCKER_COMPOSE_VERSION=5.5.1
+ARG DOCKER_BUILDX_VERSION=0.37.1
 # Playwright (playwright-cli + browser) adds ~700 MB to the image. 0 = skip it.
 ARG INSTALL_PLAYWRIGHT=1
 ARG PLAYWRIGHT_BROWSER=chromium
@@ -42,6 +44,30 @@ RUN set -eux; \
     install -m 0755 /tmp/docker/docker /usr/local/bin/docker; \
     rm -rf /tmp/docker /tmp/docker.tgz; \
     docker --version
+
+# CLI plugins: Compose v2 (`docker compose`) and Buildx (`docker buildx`, BuildKit builds -
+# without it `docker build` / `compose build` fall back to the deprecated legacy builder).
+# The static client above ships without plugins. Installed system-wide (not in
+# ~/.docker/cli-plugins) so they survive a fresh home; checksum-verified.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in amd64) composearch=x86_64 ;; arm64) composearch=aarch64 ;; *) composearch="$arch" ;; esac; \
+    plugins=/usr/local/lib/docker/cli-plugins; \
+    base="https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}"; \
+    curl -fsSL "$base/docker-compose-linux-${composearch}" -o /tmp/docker-compose; \
+    expected="$(curl -fsSL "$base/docker-compose-linux-${composearch}.sha256" | cut -d' ' -f1)"; \
+    echo "${expected}  /tmp/docker-compose" | sha256sum -c -; \
+    install -D -m 0755 /tmp/docker-compose "$plugins/docker-compose"; \
+    base="https://github.com/docker/buildx/releases/download/v${DOCKER_BUILDX_VERSION}"; \
+    asset="buildx-v${DOCKER_BUILDX_VERSION}.linux-${arch}"; \
+    curl -fsSL "$base/$asset" -o /tmp/docker-buildx; \
+    expected="$(curl -fsSL "$base/checksums.txt" | grep " \*${asset}\$" | cut -d' ' -f1)"; \
+    test -n "$expected"; \
+    echo "${expected}  /tmp/docker-buildx" | sha256sum -c -; \
+    install -D -m 0755 /tmp/docker-buildx "$plugins/docker-buildx"; \
+    rm -f /tmp/docker-compose /tmp/docker-buildx; \
+    docker compose version; \
+    docker buildx version
 
 # uv/uvx - the fastest way to run a one-off Python package without touching the system.
 RUN set -eux; \
