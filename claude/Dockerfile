@@ -12,6 +12,7 @@ ARG DOCKER_GID=984
 ARG DOCKER_CLI_VERSION=27.5.1
 ARG DOCKER_COMPOSE_VERSION=5.5.1
 ARG DOCKER_BUILDX_VERSION=0.37.1
+ARG BUN_VERSION=1.4.2
 # Playwright (playwright-cli + browser) adds ~700 MB to the image. 0 = skip it.
 ARG INSTALL_PLAYWRIGHT=1
 ARG PLAYWRIGHT_BROWSER=chromium
@@ -73,6 +74,21 @@ RUN set -eux; \
 RUN set -eux; \
     curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
     uv --version; uvx --version
+
+# Bun (runtime + package manager for JS/TS projects) with `bunx`; checksum-verified.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in amd64) bunarch=x64 ;; arm64) bunarch=aarch64 ;; *) exit 1 ;; esac; \
+    base="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"; \
+    asset="bun-linux-${bunarch}.zip"; \
+    curl -fsSL "$base/$asset" -o /tmp/bun.zip; \
+    expected="$(curl -fsSL "$base/SHASUMS256.txt" | grep "  ${asset}\$" | cut -d' ' -f1)"; \
+    test -n "$expected"; \
+    echo "${expected}  /tmp/bun.zip" | sha256sum -c -; \
+    unzip -q /tmp/bun.zip -d /tmp; \
+    install -m 0755 "/tmp/bun-linux-${bunarch}/bun" /usr/local/bin/bun; \
+    ln -s bun /usr/local/bin/bunx; \
+    rm -rf /tmp/bun.zip "/tmp/bun-linux-${bunarch}"; \
+    bun --version
 
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     && npm cache clean --force \
