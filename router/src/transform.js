@@ -40,6 +40,24 @@ function replaceMedia(content, note) {
   return count;
 }
 
+const BILLING_HEADER = 'x-anthropic-billing-header:';
+
+/** Removes Claude Code's billing header from `system`. Returns true when something was removed. */
+function stripBillingHeader(body) {
+  if (Array.isArray(body.system)) {
+    const kept = body.system.filter((block) => !(block && typeof block.text === 'string' && block.text.startsWith(BILLING_HEADER)));
+    if (kept.length === body.system.length) return false;
+    body.system = kept;
+    return true;
+  }
+  if (typeof body.system === 'string' && body.system.startsWith(BILLING_HEADER)) {
+    const newline = body.system.indexOf('\n');
+    body.system = newline === -1 ? '' : body.system.slice(newline + 1).replace(/^\n+/, '');
+    return true;
+  }
+  return false;
+}
+
 function appendSystem(body, text) {
   if (Array.isArray(body.system)) body.system.push({ type: 'text', text });
   else if (typeof body.system === 'string' && body.system) body.system = `${body.system}\n\n${text}`;
@@ -75,6 +93,11 @@ function shapeForLitellm(body, model, router) {
   }
 
   if (router.strip_anthropic_betas && 'betas' in body) { delete body.betas; applied.push('betas removed'); }
+
+  // Claude Code sends `x-anthropic-billing-header: ...; cch=<per-request hash>` as the first system
+  // block. The Anthropic API consumes it; an external backend sees plain prompt text that changes on
+  // every request, which cuts its prefix cache right after the tool definitions.
+  if (stripBillingHeader(body)) applied.push('billing header removed');
 
   if (router.strip_cache_control) {
     stripCacheControl(body.system);
