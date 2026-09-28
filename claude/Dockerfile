@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       unzip zip xz-utils file tini gosu sudo rsync openssh-client \
       # Python for writing ad hoc tools: interpreter, pip, venv, pipx + HTML->MD converter
       python3 python3-pip python3-venv python3-dev pipx python3-html2text build-essential \
+      # document tools used by project test harnesses (OCR with Polish, legacy .ppt/.doc)
+      tesseract-ocr tesseract-ocr-pol catdoc wv \
       # processes and signals (pid: host)
       procps psmisc htop lsof strace ltrace \
       # CPU / RAM / IO / sensors
