@@ -67,6 +67,45 @@ models:
     # litellm_params: {}                         # escape hatch: merged last, takes precedence
 
   # --------------------------------------------------------------------------
+  # OpenRouter, provider pinned to Together (A/B test GLM vs DeepSeek, 2026-09-28).
+  # Pinning + no fallbacks keeps the prompt cache on one provider (measured: ~85% cache hit).
+  # --------------------------------------------------------------------------
+  - id: or-glm-5.3-flash
+    label: GLM 5.3 Flash (OpenRouter/Together)
+    description: GLM 5.3 Flash via OpenRouter, provider Together (~150-200 tok/s)
+    api: openrouter
+    upstream_model: z-ai/glm-5.3-flash
+    api_base: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    behaves_as: claude-sonnet-5
+    context_tokens: 1000000
+    max_output_tokens: 131072
+    thinking: strip
+    effort: strip
+    extra_body:
+      temperature: 1.0
+      top_p: 0.95
+    litellm_params:
+      extra_body:
+        provider: {order: [together], allow_fallbacks: false}
+
+  - id: or-deepseek-v4.1-flash
+    label: DeepSeek V4.1 Flash (OpenRouter/AtlasCloud fp8)
+    description: DeepSeek V4.1 Flash via OpenRouter, AtlasCloud fp8 (~240 tok/s, cache 86%), fallback Baidu fp8
+    api: openrouter
+    upstream_model: deepseek/deepseek-v4.1-flash
+    api_base: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    behaves_as: claude-sonnet-5
+    context_tokens: 1000000
+    max_output_tokens: 131072
+    thinking: strip
+    effort: strip
+    litellm_params:
+      extra_body:
+        provider: {order: [atlas-cloud/fp8, baidu/fp8], allow_fallbacks: false}   # only these two, both fp8
+
+  # --------------------------------------------------------------------------
   # GLM 5.3 (z.ai) - the full flagship, text only. Slower and uses 3x more
   # Coding Plan quota than Flash.
   # --------------------------------------------------------------------------
