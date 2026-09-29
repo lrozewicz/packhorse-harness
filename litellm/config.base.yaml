@@ -30,3 +30,6 @@ router_settings:
   routing_strategy: simple-shuffle
   allowed_fails: 2
   cooldown_time: 30
+  # One deployment per model: a cooldown after a single upstream 429 turns into 30 s of local 429s for
+  # every client. Providers/OpenRouter already rate-limit and clients retry, so cooldowns are off.
+  disable_cooldowns: true
